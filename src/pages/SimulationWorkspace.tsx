@@ -1,6 +1,10 @@
+import { useMemo, useState } from 'react';
 import { ActivityLog } from '../components/ActivityLog';
+import { BeforeAfterCompare } from '../components/BeforeAfterCompare';
 import { DecisionPanel } from '../components/DecisionPanel';
+import { ImpactAnalysis } from '../components/ImpactAnalysis';
 import { Logo } from '../components/Logo';
+import { MetricsPanel } from '../components/MetricsPanel';
 import { ProbabilityMeter, StatusBadge } from '../components/StatusBadge';
 import { Timeline } from '../components/Timeline';
 import {
@@ -9,6 +13,7 @@ import {
   TaskBoard,
   TeamList,
 } from '../components/WorkspacePanels';
+import { previewDecision } from '../simulation/engine';
 import type { SimulationState } from '../types';
 import { formatDay } from '../utils/helpers';
 
@@ -25,7 +30,27 @@ export function SimulationWorkspace({
   onDecide,
   onAdvanceDay,
 }: SimulationWorkspaceProps) {
+  const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(null);
   const canAdvance = state.day < state.deadlineDays;
+
+  const preview = useMemo(() => {
+    if (!selectedDecisionId) return null;
+    return previewDecision(state, selectedDecisionId);
+  }, [selectedDecisionId, state]);
+
+  const handleSelect = (decisionId: string) => {
+    setSelectedDecisionId((prev) => (prev === decisionId ? null : decisionId));
+  };
+
+  const handleCancel = () => {
+    setSelectedDecisionId(null);
+  };
+
+  const handleApply = () => {
+    if (!selectedDecisionId) return;
+    onDecide(selectedDecisionId);
+    setSelectedDecisionId(null);
+  };
 
   return (
     <div className="page workspace">
@@ -75,11 +100,31 @@ export function SimulationWorkspace({
           <div className="command-card">
             <span className="command-card__label">Status</span>
             <StatusBadge status={state.status} />
-            <p className="command-card__note">Risk tolerance: {state.riskTolerance}</p>
+            <p className="command-card__note">
+              Risk tolerance: {state.riskTolerance} · {state.metrics.openTasks} open tasks
+            </p>
           </div>
 
           <div className="command-card command-card--probability">
-            <ProbabilityMeter value={state.successProbability} />
+            <ProbabilityMeter value={state.metrics.successProbability} />
+          </div>
+        </section>
+
+        <MetricsPanel metrics={state.metrics} />
+
+        <section className="workspace__sim-core" aria-label="Decision simulation core">
+          <DecisionPanel
+            decisions={state.availableDecisions}
+            selectedDecisionId={selectedDecisionId}
+            hasPreview={Boolean(preview)}
+            lastConsequence={state.lastConsequence}
+            onSelect={handleSelect}
+            onApply={handleApply}
+            onCancel={handleCancel}
+          />
+          <div className="workspace__sim-visual">
+            <ImpactAnalysis preview={preview} />
+            <BeforeAfterCompare preview={preview} />
           </div>
         </section>
 
@@ -87,11 +132,6 @@ export function SimulationWorkspace({
 
         <div className="workspace__grid">
           <div className="workspace__col workspace__col--primary">
-            <DecisionPanel
-              decisions={state.availableDecisions}
-              lastConsequence={state.lastConsequence}
-              onDecide={onDecide}
-            />
             <TaskBoard tasks={state.tasks} />
           </div>
 

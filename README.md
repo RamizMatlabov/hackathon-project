@@ -19,7 +19,14 @@ npm run build
 ## App structure
 
 - `src/pages` — Dashboard, Scenario Builder, Simulation Workspace
-- `src/simulation/engine.ts` — decision consequence logic
+- `src/simulation/engine.ts` — deterministic simulation calculations & decisions
+- `src/simulation/actions.ts` — stable action surface for future WebMCP tools
 - `src/types` — shared domain types
 - `src/data` — mock scenarios
 - `src/hooks/useLifeSimApp.ts` — app state & navigation
+
+## Simulation flow
+
+1. Select a decision → `previewDecision()` computes consequences without mutating state
+2. Review Impact Analysis + Before/After metrics
+3. **Apply Decision** → `applyDecision()` mutates `SimulationState` and appends events

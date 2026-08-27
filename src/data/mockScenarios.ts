@@ -175,6 +175,28 @@ export const SAMPLE_TASKS: Task[] = [
     dayEnd: 7,
     priority: 'high',
   },
+  {
+    id: 'task_messaging',
+    title: 'Finalize launch messaging',
+    description: 'Align product and marketing on launch copy and channels.',
+    status: 'pending',
+    assigneeId: 'tm_riley',
+    estimatedDays: 2,
+    dayStart: 4,
+    dayEnd: 6,
+    priority: 'medium',
+  },
+  {
+    id: 'task_analytics',
+    title: 'Wire launch analytics',
+    description: 'Instrument funnel events needed for go-live monitoring.',
+    status: 'pending',
+    assigneeId: 'tm_jordan',
+    estimatedDays: 2,
+    dayStart: 5,
+    dayEnd: 7,
+    priority: 'low',
+  },
 ];
 
 export const SAMPLE_RISKS: Risk[] = [
