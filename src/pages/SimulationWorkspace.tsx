@@ -5,15 +5,19 @@ import { DecisionPanel } from '../components/DecisionPanel';
 import { ImpactAnalysis } from '../components/ImpactAnalysis';
 import { Logo } from '../components/Logo';
 import { MetricsPanel } from '../components/MetricsPanel';
+import { RecentChangesPanel } from '../components/RecentChangesPanel';
+import { ScenarioCompare } from '../components/ScenarioCompare';
 import { ProbabilityMeter, StatusBadge } from '../components/StatusBadge';
 import { Timeline } from '../components/Timeline';
+import { WhatHappensNext } from '../components/WhatHappensNext';
+import { WorldStatePanel } from '../components/WorldStatePanel';
 import {
   ResourceList,
   RiskList,
   TaskBoard,
   TeamList,
 } from '../components/WorkspacePanels';
-import { previewDecision } from '../simulation/engine';
+import { compareScenarioBranch, previewDecision } from '../simulation/actions';
 import type { SimulationState } from '../types';
 import { formatDay } from '../utils/helpers';
 
@@ -22,6 +26,7 @@ interface SimulationWorkspaceProps {
   onHome: () => void;
   onDecide: (decisionId: string) => void;
   onAdvanceDay: () => void;
+  onSimulate: () => void;
 }
 
 export function SimulationWorkspace({
@@ -29,14 +34,21 @@ export function SimulationWorkspace({
   onHome,
   onDecide,
   onAdvanceDay,
+  onSimulate,
 }: SimulationWorkspaceProps) {
   const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(null);
+  const [branchDecisionId, setBranchDecisionId] = useState<string | null>(null);
   const canAdvance = state.day < state.deadlineDays;
 
   const preview = useMemo(() => {
     if (!selectedDecisionId) return null;
     return previewDecision(state, selectedDecisionId);
   }, [selectedDecisionId, state]);
+
+  const branchCompare = useMemo(() => {
+    if (!branchDecisionId) return null;
+    return compareScenarioBranch(state, branchDecisionId);
+  }, [branchDecisionId, state]);
 
   const handleSelect = (decisionId: string) => {
     setSelectedDecisionId((prev) => (prev === decisionId ? null : decisionId));
@@ -67,7 +79,10 @@ export function SimulationWorkspace({
             onClick={onAdvanceDay}
             disabled={!canAdvance}
           >
-            Advance day
+            Next Day
+          </button>
+          <button type="button" className="btn btn--ghost" onClick={onSimulate}>
+            Recalculate
           </button>
           <button type="button" className="btn btn--ghost" onClick={onHome}>
             Exit to home
@@ -76,6 +91,20 @@ export function SimulationWorkspace({
       </header>
 
       <main className="workspace__main">
+        <nav className="sim-loop" aria-label="Simulation loop">
+          <ol className="sim-loop__steps">
+            <li className="is-active">Observe</li>
+            <li className={selectedDecisionId ? 'is-active' : ''}>Decide</li>
+            <li className={preview ? 'is-active' : ''}>Preview</li>
+            <li>Apply</li>
+            <li>Simulate</li>
+            <li>Observe</li>
+          </ol>
+          <p className="sim-loop__hint">
+            Observe → Decide → Preview → Apply → Next Day → Observe
+          </p>
+        </nav>
+
         <section className="workspace__command" aria-label="Scenario command bar">
           <div className="command-card command-card--goal">
             <span className="command-card__label">Goal</span>
@@ -110,6 +139,12 @@ export function SimulationWorkspace({
           </div>
         </section>
 
+        <section className="workspace__world" aria-label="World observation">
+          <WorldStatePanel state={state} />
+          <RecentChangesPanel changes={state.recentChanges} />
+          <WhatHappensNext narrative={state.narrative} />
+        </section>
+
         <MetricsPanel metrics={state.metrics} />
 
         <section className="workspace__sim-core" aria-label="Decision simulation core">
@@ -127,6 +162,14 @@ export function SimulationWorkspace({
             <BeforeAfterCompare preview={preview} />
           </div>
         </section>
+
+        <ScenarioCompare
+          compare={branchCompare}
+          branchDecisionId={branchDecisionId}
+          decisions={state.availableDecisions}
+          onSelectBranch={setBranchDecisionId}
+          onClear={() => setBranchDecisionId(null)}
+        />
 
         <Timeline day={state.day} deadlineDays={state.deadlineDays} tasks={state.tasks} />
 

@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<SimulationEvent['eventType'], string> = {
   task_change: 'Task Change',
   metric_change: 'Metric Change',
   day_advanced: 'Day Advanced',
+  emergent: 'Emergent',
 };
 
 export function ActivityLog({ events }: ActivityLogProps) {

@@ -65,6 +65,7 @@ export function MetricsPanel({ metrics }: MetricsPanelProps) {
         <Gauge label="Time pressure" value={metrics.timePressure} tone="inverse" />
         <Gauge label="Resource pressure" value={metrics.resourcePressure} tone="inverse" />
         <Gauge label="Team capacity" value={metrics.teamCapacity} tone="capacity" />
+        <Gauge label="Outcome quality" value={metrics.outcomeQuality} tone="capacity" />
       </div>
 
       <dl className="metrics-panel__stats">

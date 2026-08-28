@@ -2,6 +2,15 @@ export function createId(prefix = 'id'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
+/** Deterministic id for simulation artifacts (consequences, emergent events). */
+export function stableId(...parts: Array<string | number>): string {
+  return parts
+    .map((p) => String(p).toLowerCase().replace(/[^a-z0-9]+/g, '_'))
+    .filter(Boolean)
+    .join('_')
+    .slice(0, 80);
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

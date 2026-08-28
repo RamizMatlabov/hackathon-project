@@ -1,16 +1,12 @@
 import type {
   Decision,
-  DecisionCategory,
-  DecisionKind,
   DecisionResult,
   EventType,
-  ImpactLevel,
-  ImpactStep,
   MetricChange,
   MetricKey,
+  RecentChange,
   Resource,
   Risk,
-  RiskSeverity,
   Scenario,
   SimulationEvent,
   SimulationMetrics,
@@ -20,12 +16,16 @@ import type {
   TeamMember,
 } from '../types';
 import { SAMPLE_RISKS, SAMPLE_TASKS } from '../data/mockScenarios';
+import { clamp, createId } from '../utils/helpers';
+import { conditions } from './conditions';
+import { consequenceSummaries } from './consequences';
+import { applyDecisionMutation, getAvailableDecisions, remainingDaysOf } from './decisions';
 import {
-  clamp,
-  createId,
-  rankToSeverity,
-  severityRank,
-} from '../utils/helpers';
+  detectEmergentEvents,
+  evolveRisks,
+  generateSimulationEvent,
+} from './emergentEvents';
+import { generateNarrative, recentChangesFromMetrics } from './narrative';
 
 const METRIC_LABELS: Record<MetricKey, string> = {
   successProbability: 'Success probability',
@@ -36,19 +36,8 @@ const METRIC_LABELS: Record<MetricKey, string> = {
   openTasks: 'Open tasks',
   remainingDays: 'Days remaining',
   teamSize: 'Team size',
+  outcomeQuality: 'Outcome quality',
 };
-
-const KIND_CATEGORY: Record<DecisionKind, DecisionCategory> = {
-  reduce_scope: 'scope',
-  add_team_member: 'team',
-  move_deadline: 'schedule',
-  remove_task: 'tasks',
-  increase_resources: 'resources',
-};
-
-function remainingDaysOf(day: number, deadlineDays: number): number {
-  return Math.max(0, deadlineDays - day);
-}
 
 function openTasksOf(tasks: Task[]): Task[] {
   return tasks.filter((t) => t.status !== 'completed');
@@ -65,8 +54,15 @@ export function calculateRisk(
   }
 
   const weighted = risks.reduce((sum, risk) => {
-    const severityWeight = (severityRank(risk.severity) + 1) / 4;
-    return sum + risk.probability * severityWeight * 100;
+    const severityWeight =
+      (risk.severity === 'low'
+        ? 0
+        : risk.severity === 'medium'
+          ? 1
+          : risk.severity === 'high'
+            ? 2
+            : 3) + 1;
+    return sum + risk.probability * (severityWeight / 4) * 100;
   }, 0);
 
   const base = weighted / risks.length;
@@ -145,6 +141,7 @@ export function calculateSuccessProbability(
   riskTolerance: Scenario['riskTolerance'],
   openTasks: number,
   remainingDays: number,
+  outcomeQuality: number,
 ): number {
   let score = 88;
   score -= risk * 0.38;
@@ -152,24 +149,37 @@ export function calculateSuccessProbability(
   score -= resourcePressure * 0.14;
   score += teamCapacity * 0.18;
   score -= Math.max(0, openTasks - remainingDays) * 2.5;
+  // Quality drag: thin scope can look "successful" but we keep a mild penalty
+  score -= Math.max(0, 70 - outcomeQuality) * 0.12;
 
   if (riskTolerance === 'low') score -= 3;
   if (riskTolerance === 'high') score += 3;
   if (remainingDays <= 2 && openTasks > 2) score -= 10;
 
+  // Conditional: high risk significantly hurts success
+  if (risk > 70) score -= 8;
+
+  // Conditional: high capacity + comfortable deadline lowers effective risk drag
+  if (teamCapacity >= 70 && remainingDays >= 5 && timePressure < 45) {
+    score += 4;
+  }
+
   return clamp(Math.round(score), 8, 96);
 }
 
-export function computeMetrics(state: Pick<
-  SimulationState,
-  | 'day'
-  | 'deadlineDays'
-  | 'tasks'
-  | 'risks'
-  | 'resources'
-  | 'team'
-  | 'riskTolerance'
->): SimulationMetrics {
+export function computeMetrics(
+  state: Pick<
+    SimulationState,
+    | 'day'
+    | 'deadlineDays'
+    | 'tasks'
+    | 'risks'
+    | 'resources'
+    | 'team'
+    | 'riskTolerance'
+    | 'outcomeQuality'
+  >,
+): SimulationMetrics {
   const remainingDays = remainingDaysOf(state.day, state.deadlineDays);
   const openTasks = openTasksOf(state.tasks).length;
   const teamSize = state.team.length;
@@ -181,7 +191,17 @@ export function computeMetrics(state: Pick<
   );
   const resourcePressure = calculateResourcePressure(state.resources);
   const teamCapacity = calculateTeamCapacity(state.team, state.tasks);
-  const risk = calculateRisk(state.risks, timePressure, openTasks);
+  let risk = calculateRisk(state.risks, timePressure, openTasks);
+
+  // Conditional consequence mirrors: high capacity + comfortable deadline → risk down
+  if (teamCapacity >= 70 && remainingDays >= 5 && timePressure < 45) {
+    risk = clamp(risk - 6, 5, 98);
+  }
+  if (remainingDays <= 3 && teamCapacity < 70) {
+    risk = clamp(risk + 5, 5, 98);
+  }
+
+  const outcomeQuality = state.outcomeQuality;
   const successProbability = calculateSuccessProbability(
     risk,
     timePressure,
@@ -190,6 +210,7 @@ export function computeMetrics(state: Pick<
     state.riskTolerance,
     openTasks,
     remainingDays,
+    outcomeQuality,
   );
 
   return {
@@ -201,11 +222,14 @@ export function computeMetrics(state: Pick<
     openTasks,
     remainingDays,
     teamSize,
+    outcomeQuality,
   };
 }
 
 function deriveStatus(metrics: SimulationMetrics, risks: Risk[]): SimulationStatus {
   const hasCritical = risks.some((r) => r.severity === 'critical');
+  if (metrics.remainingDays <= 0 && metrics.openTasks > 0) return 'failed';
+  if (metrics.remainingDays <= 0 && metrics.openTasks === 0) return 'completed';
   if (hasCritical || metrics.successProbability < 35 || metrics.risk >= 78) {
     return 'critical';
   }
@@ -219,196 +243,27 @@ function deriveStatus(metrics: SimulationMetrics, risks: Risk[]): SimulationStat
   return 'on_track';
 }
 
-export function generateSimulationEvent(input: {
-  day: number;
-  eventType: EventType;
-  title: string;
-  description: string;
-  impact: string;
-  relatedDecisionId?: string | null;
-  relatedDecisionTitle?: string | null;
-}): SimulationEvent {
-  const categoryMap: Record<EventType, SimulationEvent['category']> = {
-    system: 'system',
-    decision_applied: 'decision',
-    risk_change: 'risk',
-    resource_change: 'resource',
-    team_change: 'team',
-    task_change: 'task',
-    metric_change: 'system',
-    day_advanced: 'system',
-  };
-
-  return {
-    id: createId('evt'),
-    timestamp: Date.now(),
-    day: input.day,
-    eventType: input.eventType,
-    title: input.title,
-    description: input.description,
-    impact: input.impact,
-    relatedDecisionId: input.relatedDecisionId ?? null,
-    relatedDecisionTitle: input.relatedDecisionTitle ?? null,
-    category: categoryMap[input.eventType],
-  };
-}
-
-function shiftRiskSeverities(risks: Risk[], delta: number): Risk[] {
-  return risks.map((risk) => {
-    const next = clamp(severityRank(risk.severity) + delta, 0, 3);
-    return {
-      ...risk,
-      severity: rankToSeverity(next) as RiskSeverity,
-      probability: clamp(risk.probability + delta * 0.08, 0.05, 0.95),
-    };
-  });
-}
-
-function decisionEffects(kind: DecisionKind, state: SimulationState): Decision['effects'] {
-  switch (kind) {
-    case 'reduce_scope':
-      return [
-        { target: 'tasks', description: 'Remove non-critical deliverables', direction: 'decrease' },
-        { target: 'timePressure', description: 'Lower schedule load', direction: 'decrease' },
-        { target: 'risk', description: 'Reduce scope-creep exposure', direction: 'decrease' },
-      ];
-    case 'add_team_member':
-      return [
-        { target: 'team', description: 'Add contractor capacity', direction: 'increase' },
-        { target: 'teamCapacity', description: 'Raise available capacity', direction: 'increase' },
-        { target: 'resources', description: 'Consume budget', direction: 'decrease' },
-      ];
-    case 'move_deadline': {
-      const compressing = (state.deadlineDays > 4);
-      return compressing
-        ? [
-            { target: 'deadline', description: 'Compress remaining schedule', direction: 'decrease' },
-            { target: 'timePressure', description: 'Raise schedule pressure', direction: 'increase' },
-            { target: 'risk', description: 'Elevate delivery risk', direction: 'increase' },
-          ]
-        : [
-            { target: 'deadline', description: 'Extend go-live window', direction: 'increase' },
-            { target: 'timePressure', description: 'Ease schedule pressure', direction: 'decrease' },
-            { target: 'risk', description: 'Lower delivery risk', direction: 'decrease' },
-          ];
-    }
-    case 'remove_task':
-      return [
-        { target: 'tasks', description: 'Drop a selected work item', direction: 'decrease' },
-        { target: 'timePressure', description: 'Free critical-path capacity', direction: 'decrease' },
-        { target: 'successProbability', description: 'Improve odds of landing', direction: 'increase' },
-      ];
-    case 'increase_resources':
-      return [
-        { target: 'resources', description: 'Add budget and buffer days', direction: 'increase' },
-        { target: 'resourcePressure', description: 'Relieve spend/time pressure', direction: 'decrease' },
-        { target: 'risk', description: 'Improve mitigation headroom', direction: 'decrease' },
-      ];
-  }
-}
-
-function decisionRisks(kind: DecisionKind): string[] {
-  switch (kind) {
-    case 'reduce_scope':
-      return ['Stakeholder pushback on cut features', 'Perceived quality reduction'];
-    case 'add_team_member':
-      return ['Onboarding drag', 'Budget overrun', 'Coordination overhead'];
-    case 'move_deadline':
-      return ['Quality shortcuts', 'Team burnout', 'Missed dependency windows'];
-    case 'remove_task':
-      return ['Hidden dependency breakage', 'Support gaps after launch'];
-    case 'increase_resources':
-      return ['Diminishing returns', 'Approval delay for spend'];
-  }
-}
-
-function estimatedImpactFor(kind: DecisionKind, state: SimulationState): ImpactLevel {
-  if (kind === 'move_deadline' && state.deadlineDays > 4) return 'high';
-  if (kind === 'reduce_scope') return 'medium';
-  if (kind === 'add_team_member') return 'medium';
-  if (kind === 'increase_resources') return 'medium';
-  return 'low';
-}
-
-function buildDecision(
-  kind: DecisionKind,
+function finalizeState(
   state: SimulationState,
-  partial: Pick<Decision, 'title' | 'description' | 'available'> & {
-    payload?: Record<string, unknown>;
-  },
-): Decision {
-  return {
-    // Stable per kind so preview selection survives metric recomputes.
-    id: `dec_${kind}`,
-    kind,
-    category: KIND_CATEGORY[kind],
-    effects: decisionEffects(kind, state),
-    possibleRisks: decisionRisks(kind),
-    estimatedImpact: estimatedImpactFor(kind, state),
-    ...partial,
-  };
-}
-
-function refreshDecisions(state: SimulationState): Decision[] {
-  const removable = state.tasks.find(
-    (t) =>
-      t.status === 'pending' ||
-      t.status === 'blocked' ||
-      t.status === 'needs_restructure',
-  );
-  const deadlineAlreadyTight = state.deadlineDays <= 4;
-
-  return [
-    buildDecision('reduce_scope', state, {
-      title: 'Reduce scope',
-      description: 'Cut non-critical deliverables to protect the launch window.',
-      available: state.tasks.some((t) => t.priority !== 'high' && t.status !== 'completed'),
-    }),
-    buildDecision('add_team_member', state, {
-      title: 'Add team member',
-      description: 'Bring in a contractor to absorb overloaded workstreams.',
-      available: state.team.length < 6,
-      payload: {
-        name: 'Casey Brooks',
-        role: 'Full-stack Contractor',
-        capacity: 80,
-        skills: ['React', 'APIs', 'QA'],
-      },
-    }),
-    buildDecision('move_deadline', state, {
-      title: deadlineAlreadyTight ? 'Extend deadline by 3 days' : 'Move deadline to 4 days',
-      description: deadlineAlreadyTight
-        ? 'Buy back schedule by pushing the go-live window.'
-        : 'Compress the timeline aggressively to an earlier go-live.',
-      available: true,
-      payload: {
-        newDeadlineDays: deadlineAlreadyTight ? state.deadlineDays + 3 : 4,
-      },
-    }),
-    buildDecision('remove_task', state, {
-      title: removable ? `Remove task: ${removable.title}` : 'Remove a pending task',
-      description: 'Drop a lower-priority item to free capacity.',
-      available: Boolean(removable),
-      payload: { taskId: removable?.id },
-    }),
-    buildDecision('increase_resources', state, {
-      title: 'Increase resources',
-      description: 'Allocate additional budget and schedule buffer.',
-      available: true,
-      payload: { budgetDelta: 8000, bufferDays: 2 },
-    }),
-  ];
-}
-
-function finalizeState(state: SimulationState): SimulationState {
+  options?: { recentChanges?: RecentChange[]; preserveNarrative?: boolean },
+): SimulationState {
   const metrics = computeMetrics(state);
-  return {
+  const withMetrics: SimulationState = {
     ...state,
     remainingDays: metrics.remainingDays,
     successProbability: metrics.successProbability,
     metrics,
+    outcomeQuality: metrics.outcomeQuality,
     status: deriveStatus(metrics, state.risks),
-    availableDecisions: refreshDecisions({ ...state, metrics }),
+  };
+  const availableDecisions = getAvailableDecisions(withMetrics);
+  const narrative = generateNarrative({ ...withMetrics, availableDecisions });
+
+  return {
+    ...withMetrics,
+    availableDecisions,
+    narrative,
+    recentChanges: options?.recentChanges ?? state.recentChanges ?? [],
   };
 }
 
@@ -430,13 +285,15 @@ function cloneState(state: SimulationState): SimulationState {
     decisionsHistory: [...state.decisionsHistory],
     events: state.events.map((e) => ({ ...e })),
     metrics: { ...state.metrics },
+    recentChanges: state.recentChanges.map((c) => ({ ...c })),
     lastResult: state.lastResult
       ? {
           ...state.lastResult,
           before: { ...state.lastResult.before },
           after: { ...state.lastResult.after },
           changes: state.lastResult.changes.map((c) => ({ ...c })),
-          consequences: [...state.lastResult.consequences],
+          consequences: state.lastResult.consequences.map((c) => ({ ...c })),
+          consequenceSummaries: [...state.lastResult.consequenceSummaries],
           events: state.lastResult.events.map((e) => ({ ...e })),
           impactChain: state.lastResult.impactChain.map((s) => ({ ...s })),
           possibleRisks: [...state.lastResult.possibleRisks],
@@ -455,6 +312,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
     dayStart: Math.min(t.dayStart, Math.max(1, scenario.deadlineDays - 1)),
   }));
   const risks = SAMPLE_RISKS.map((r) => ({ ...r, id: createId('risk') }));
+  const outcomeQuality = 78;
 
   const draft: SimulationState = {
     scenarioId: scenario.id,
@@ -477,6 +335,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       openTasks: 0,
       remainingDays: 0,
       teamSize: team.length,
+      outcomeQuality,
     },
     resources: scenario.resources.map((r) => ({ ...r })),
     team,
@@ -490,6 +349,9 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
     lastDecisionId: null,
     lastConsequence: null,
     lastResult: null,
+    recentChanges: [],
+    narrative: '',
+    outcomeQuality,
   };
 
   const metrics = computeMetrics(draft);
@@ -500,6 +362,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       title: 'Simulation initialized',
       description: `${scenario.name} is live. Goal: ${scenario.goal.title}.`,
       impact: `Baseline success probability ${metrics.successProbability}%`,
+      seq: 0,
     }),
     generateSimulationEvent({
       day: 1,
@@ -507,6 +370,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       title: 'Baseline risks assessed',
       description: `${risks.length} active risks scored against current constraints.`,
       impact: `Risk index ${metrics.risk}% · Time pressure ${metrics.timePressure}%`,
+      seq: 1,
     }),
     generateSimulationEvent({
       day: 1,
@@ -514,6 +378,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       title: 'Workstream loaded',
       description: `${tasks.length} tasks placed on the timeline across ${scenario.team.length} team members.`,
       impact: `${metrics.openTasks} open tasks · ${metrics.remainingDays} days remaining`,
+      seq: 2,
     }),
   ];
 
@@ -527,439 +392,6 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
   });
 }
 
-interface MutationOutcome {
-  state: SimulationState;
-  consequences: string[];
-  events: SimulationEvent[];
-  impactChain: ImpactStep[];
-}
-
-function applyReduceScope(state: SimulationState, decision: Decision): MutationOutcome {
-  const candidates = state.tasks.filter(
-    (t) => t.priority !== 'high' && t.status !== 'completed',
-  );
-  const removed = candidates.slice(0, 2);
-  const removedIds = new Set(removed.map((t) => t.id));
-  const tasks = state.tasks.filter((t) => !removedIds.has(t.id));
-  const risks = shiftRiskSeverities(state.risks, -1).map((r) =>
-    r.title === 'Scope creep before launch'
-      ? {
-          ...r,
-          severity: 'low' as RiskSeverity,
-          probability: clamp(r.probability - 0.2, 0.05, 0.95),
-        }
-      : r,
-  );
-
-  const consequences =
-    removed.length > 0
-      ? [
-          `Dropped ${removed.length} non-critical task(s): ${removed.map((t) => t.title).join('; ')}.`,
-          'Scope-creep exposure eased; schedule load should fall.',
-        ]
-      : ['No non-critical tasks remained to cut.'];
-
-  const events = [
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'decision_applied',
-      title: 'Scope reduced',
-      description: consequences[0],
-      impact: removed.length > 0 ? `−${removed.length} tasks` : 'No task change',
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-  ];
-
-  if (removed.length > 0) {
-    events.push(
-      generateSimulationEvent({
-        day: state.day,
-        eventType: 'task_change',
-        title: 'Tasks removed from plan',
-        description: removed.map((t) => t.title).join('; '),
-        impact: `Open tasks ${state.metrics.openTasks} → ${openTasksOf(tasks).length}`,
-        relatedDecisionId: decision.id,
-        relatedDecisionTitle: decision.title,
-      }),
-    );
-  }
-
-  return {
-    state: { ...state, tasks, risks },
-    consequences,
-    events,
-    impactChain: [
-      { kind: 'decision', label: decision.title, detail: decision.description },
-      {
-        kind: 'direct',
-        label: removed.length > 0 ? `−${removed.length} tasks` : 'No tasks cut',
-        detail: removed.map((t) => t.title).join(', ') || undefined,
-      },
-      { kind: 'secondary', label: 'Lower time pressure', detail: 'Less work competing for the same window' },
-      { kind: 'secondary', label: 'Lower risk', detail: 'Scope creep and overload ease' },
-      { kind: 'outcome', label: 'Higher success probability', detail: 'Delivery odds improve' },
-    ],
-  };
-}
-
-function applyAddTeamMember(state: SimulationState, decision: Decision): MutationOutcome {
-  const payload = decision.payload ?? {};
-  const member: TeamMember = {
-    id: createId('tm'),
-    name: String(payload.name ?? 'New Contractor'),
-    role: String(payload.role ?? 'Contractor'),
-    capacity: Number(payload.capacity ?? 75),
-    skills: Array.isArray(payload.skills) ? (payload.skills as string[]) : ['general'],
-  };
-
-  const tasks = state.tasks.map((task) => {
-    if (task.status === 'blocked' || task.status === 'needs_restructure') {
-      return { ...task, status: 'in_progress' as const, assigneeId: member.id };
-    }
-    return task;
-  });
-
-  const resources = state.resources.map((r) =>
-    r.type === 'budget' ? { ...r, remaining: Math.max(0, r.remaining - 4500) } : r,
-  );
-
-  const risks = shiftRiskSeverities(state.risks, -1);
-  const consequences = [
-    `${member.name} joined as ${member.role}.`,
-    'Blocked / restructure work reassigned; budget reduced by 4,500.',
-  ];
-
-  const events = [
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'decision_applied',
-      title: 'Team expanded',
-      description: consequences[0],
-      impact: `Team ${state.team.length} → ${state.team.length + 1}`,
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'team_change',
-      title: 'Capacity injected',
-      description: `${member.name} absorbing blocked workstreams.`,
-      impact: 'Blocked tasks moved to in progress',
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'resource_change',
-      title: 'Budget consumed',
-      description: 'Contractor cost drawn from project budget.',
-      impact: '−4,500 USD remaining budget',
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-  ];
-
-  return {
-    state: {
-      ...state,
-      team: [...state.team, member],
-      tasks,
-      resources,
-      risks,
-    },
-    consequences,
-    events,
-    impactChain: [
-      { kind: 'decision', label: decision.title, detail: decision.description },
-      { kind: 'direct', label: '+1 team member', detail: `${member.name} · ${member.role}` },
-      { kind: 'direct', label: 'Blocked work unblocked', detail: 'Reassigned to new capacity' },
-      { kind: 'secondary', label: 'Higher team capacity', detail: 'More parallel throughput' },
-      { kind: 'secondary', label: 'Slight resource pressure', detail: 'Budget drawdown' },
-      { kind: 'outcome', label: 'Improved delivery odds', detail: 'Success probability typically rises' },
-    ],
-  };
-}
-
-function applyMoveDeadline(state: SimulationState, decision: Decision): MutationOutcome {
-  const newDeadline = Number(decision.payload?.newDeadlineDays ?? state.deadlineDays);
-  const compressing = newDeadline < state.deadlineDays;
-
-  let tasks = state.tasks;
-  let risks = state.risks;
-  const consequences: string[] = [];
-  const events: SimulationEvent[] = [];
-  let impactChain: ImpactStep[];
-
-  if (compressing) {
-    tasks = state.tasks.map((task) => {
-      if (task.status === 'completed') return task;
-      if (task.dayEnd > newDeadline || task.priority === 'medium') {
-        return {
-          ...task,
-          status: 'needs_restructure' as const,
-          dayEnd: Math.min(task.dayEnd, newDeadline),
-          priority: task.priority === 'low' ? 'medium' : task.priority === 'medium' ? 'high' : task.priority,
-        };
-      }
-      return { ...task, dayEnd: Math.min(task.dayEnd, newDeadline) };
-    });
-
-    risks = shiftRiskSeverities(state.risks, 1).map((r) => ({
-      ...r,
-      probability: clamp(r.probability + 0.12, 0.05, 0.95),
-    }));
-
-    if (!risks.some((r) => r.title === 'Compressed deadline pressure')) {
-      risks = [
-        {
-          id: createId('risk'),
-          title: 'Compressed deadline pressure',
-          description: 'Aggressive timeline leaves little room for defects or review lag.',
-          severity: 'critical',
-          probability: 0.72,
-          mitigation: 'Cut scope or restore schedule buffer immediately.',
-        },
-        ...risks,
-      ];
-    }
-
-    const criticalized = tasks.filter((t) => t.status === 'needs_restructure').length;
-    consequences.push(
-      `Deadline moved from ${state.deadlineDays} to ${newDeadline} days.`,
-      `${criticalized} task(s) marked needs restructure; risk elevated.`,
-    );
-
-    events.push(
-      generateSimulationEvent({
-        day: state.day,
-        eventType: 'decision_applied',
-        title: 'Deadline compressed',
-        description: consequences[0],
-        impact: `Days remaining ${state.metrics.remainingDays} → ${remainingDaysOf(state.day, newDeadline)}`,
-        relatedDecisionId: decision.id,
-        relatedDecisionTitle: decision.title,
-      }),
-      generateSimulationEvent({
-        day: state.day,
-        eventType: 'risk_change',
-        title: 'Schedule risk spiked',
-        description: 'Compressed deadline pressure introduced as a critical risk.',
-        impact: 'Risk severity increased across active risks',
-        relatedDecisionId: decision.id,
-        relatedDecisionTitle: decision.title,
-      }),
-      generateSimulationEvent({
-        day: state.day,
-        eventType: 'task_change',
-        title: 'Tasks became critical',
-        description: `${criticalized} tasks require restructuring to fit the new window.`,
-        impact: 'Several work items flagged needs_restructure',
-        relatedDecisionId: decision.id,
-        relatedDecisionTitle: decision.title,
-      }),
-    );
-
-    impactChain = [
-      { kind: 'decision', label: decision.title, detail: decision.description },
-      {
-        kind: 'direct',
-        label: `Deadline → ${newDeadline} days`,
-        detail: `From ${state.deadlineDays} days`,
-      },
-      { kind: 'direct', label: 'Tasks turn critical', detail: 'Overlap forces restructure' },
-      { kind: 'secondary', label: 'Higher time pressure', detail: 'Same work, less calendar' },
-      { kind: 'secondary', label: 'Higher risk', detail: 'Critical schedule exposure' },
-      { kind: 'outcome', label: 'Lower success probability', detail: 'Delivery odds drop unless scope changes' },
-    ];
-  } else {
-    tasks = state.tasks.map((task) =>
-      task.status === 'needs_restructure' ? { ...task, status: 'in_progress' as const } : task,
-    );
-    risks = shiftRiskSeverities(
-      state.risks.filter((r) => r.title !== 'Compressed deadline pressure'),
-      -1,
-    );
-    consequences.push(
-      `Deadline extended to ${newDeadline} days.`,
-      'Schedule pressure eased; restructuring flags cleared.',
-    );
-    events.push(
-      generateSimulationEvent({
-        day: state.day,
-        eventType: 'decision_applied',
-        title: 'Deadline extended',
-        description: consequences[0],
-        impact: `Deadline ${state.deadlineDays} → ${newDeadline} days`,
-        relatedDecisionId: decision.id,
-        relatedDecisionTitle: decision.title,
-      }),
-    );
-    impactChain = [
-      { kind: 'decision', label: decision.title, detail: decision.description },
-      { kind: 'direct', label: `Deadline → ${newDeadline} days`, detail: 'More calendar buffer' },
-      { kind: 'secondary', label: 'Lower time pressure', detail: 'Workload spreads out' },
-      { kind: 'secondary', label: 'Lower risk', detail: 'Critical deadline risk cleared' },
-      { kind: 'outcome', label: 'Higher success probability', detail: 'Delivery odds recover' },
-    ];
-  }
-
-  return {
-    state: { ...state, deadlineDays: newDeadline, tasks, risks },
-    consequences,
-    events,
-    impactChain,
-  };
-}
-
-function applyRemoveTask(state: SimulationState, decision: Decision): MutationOutcome {
-  const taskId = String(decision.payload?.taskId ?? '');
-  const target =
-    state.tasks.find((t) => t.id === taskId) ??
-    state.tasks.find((t) => t.status !== 'completed');
-
-  if (!target) {
-    const consequences = ['No removable task found.'];
-    const events = [
-      generateSimulationEvent({
-        day: state.day,
-        eventType: 'task_change',
-        title: 'Task removal skipped',
-        description: consequences[0],
-        impact: 'No change',
-        relatedDecisionId: decision.id,
-        relatedDecisionTitle: decision.title,
-      }),
-    ];
-    return {
-      state,
-      consequences,
-      events,
-      impactChain: [
-        { kind: 'decision', label: decision.title },
-        { kind: 'direct', label: 'No task removed' },
-        { kind: 'outcome', label: 'State unchanged' },
-      ],
-    };
-  }
-
-  const tasks = state.tasks.filter((t) => t.id !== target.id);
-  const risks = shiftRiskSeverities(state.risks, -1);
-  const consequences = [
-    `Removed "${target.title}" from the plan.`,
-    'Capacity freed for critical-path work.',
-  ];
-  const events = [
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'decision_applied',
-      title: 'Task removed',
-      description: consequences[0],
-      impact: `Open tasks ${state.metrics.openTasks} → ${openTasksOf(tasks).length}`,
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-  ];
-
-  return {
-    state: { ...state, tasks, risks },
-    consequences,
-    events,
-    impactChain: [
-      { kind: 'decision', label: decision.title, detail: decision.description },
-      { kind: 'direct', label: '−1 task', detail: target.title },
-      { kind: 'secondary', label: 'Lower time pressure', detail: 'Less competing work' },
-      { kind: 'secondary', label: 'Lower risk', detail: 'Fewer failure points' },
-      { kind: 'outcome', label: 'Higher success probability', detail: 'Focus on remaining critical path' },
-    ],
-  };
-}
-
-function applyIncreaseResources(
-  state: SimulationState,
-  decision: Decision,
-): MutationOutcome {
-  const budgetDelta = Number(decision.payload?.budgetDelta ?? 5000);
-  const bufferDays = Number(decision.payload?.bufferDays ?? 1);
-
-  const resources = state.resources.map((r) => {
-    if (r.type === 'budget') {
-      return {
-        ...r,
-        amount: r.amount + budgetDelta,
-        remaining: r.remaining + budgetDelta,
-      };
-    }
-    if (r.type === 'time') {
-      return {
-        ...r,
-        amount: r.amount + bufferDays,
-        remaining: r.remaining + bufferDays,
-      };
-    }
-    return r;
-  });
-
-  const tasks = state.tasks.map((t) =>
-    t.status === 'blocked' ? { ...t, status: 'in_progress' as const } : t,
-  );
-  const risks = shiftRiskSeverities(state.risks, -1);
-
-  const consequences = [
-    `Added ${budgetDelta.toLocaleString()} USD and ${bufferDays} buffer day(s).`,
-    'Blocked work resumed where resources were the bottleneck.',
-  ];
-
-  const events = [
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'decision_applied',
-      title: 'Resources increased',
-      description: consequences[0],
-      impact: `+${budgetDelta.toLocaleString()} USD · +${bufferDays} buffer day(s)`,
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-    generateSimulationEvent({
-      day: state.day,
-      eventType: 'resource_change',
-      title: 'Capacity headroom restored',
-      description: 'Budget and schedule buffer expanded.',
-      impact: 'Resource pressure expected to fall',
-      relatedDecisionId: decision.id,
-      relatedDecisionTitle: decision.title,
-    }),
-  ];
-
-  return {
-    state: { ...state, resources, tasks, risks },
-    consequences,
-    events,
-    impactChain: [
-      { kind: 'decision', label: decision.title, detail: decision.description },
-      {
-        kind: 'direct',
-        label: 'More budget & buffer',
-        detail: `+${budgetDelta.toLocaleString()} USD · +${bufferDays} days`,
-      },
-      { kind: 'secondary', label: 'Lower resource pressure', detail: 'Spend and time headroom' },
-      { kind: 'secondary', label: 'Lower risk', detail: 'Mitigation options expand' },
-      { kind: 'outcome', label: 'Higher success probability', detail: 'Constraints loosen' },
-    ],
-  };
-}
-
-const handlers: Record<
-  DecisionKind,
-  (state: SimulationState, decision: Decision) => MutationOutcome
-> = {
-  reduce_scope: applyReduceScope,
-  add_team_member: applyAddTeamMember,
-  move_deadline: applyMoveDeadline,
-  remove_task: applyRemoveTask,
-  increase_resources: applyIncreaseResources,
-};
-
 const TRACKED_METRICS: MetricKey[] = [
   'successProbability',
   'risk',
@@ -969,6 +401,7 @@ const TRACKED_METRICS: MetricKey[] = [
   'openTasks',
   'remainingDays',
   'teamSize',
+  'outcomeQuality',
 ];
 
 function metricUnit(key: MetricKey): MetricChange['unit'] {
@@ -990,28 +423,37 @@ function buildChanges(before: SimulationMetrics, after: SimulationMetrics): Metr
 function simulateDecision(
   state: SimulationState,
   decision: Decision,
-  advanceDayOnApply: boolean,
 ): { next: SimulationState; result: DecisionResult } {
   const working = cloneState(state);
-  const day = advanceDayOnApply
-    ? Math.min(working.day + 1, working.deadlineDays)
-    : working.day;
-  working.day = day;
+  const beforeMetrics = { ...state.metrics };
 
-  const outcome = handlers[decision.kind](working, decision);
+  const outcome = applyDecisionMutation(working, decision);
+
+  // Conditional post-mutation: high resources + blocked → unblock (also in increase_resources)
+  let mutated = outcome.state;
+  if (conditions.highResources(mutated) && conditions.hasBlockedTasks(mutated)) {
+    mutated = {
+      ...mutated,
+      tasks: mutated.tasks.map((t) =>
+        t.status === 'blocked' ? { ...t, status: 'in_progress' as const } : t,
+      ),
+    };
+  }
+
   const withEvents: SimulationState = {
-    ...outcome.state,
-    day,
+    ...mutated,
     events: [...outcome.events, ...state.events],
     lastDecisionId: decision.id,
-    lastConsequence: outcome.consequences.join(' '),
+    lastConsequence: consequenceSummaries(outcome.consequences).join(' '),
     decisionsHistory: [...state.decisionsHistory, decision.id],
   };
 
   const finalized = finalizeState(withEvents);
-  const before = { ...state.metrics };
   const after = { ...finalized.metrics };
-  const changes = buildChanges(before, after);
+  const changes = buildChanges(beforeMetrics, after);
+  const recentChanges = recentChangesFromMetrics(beforeMetrics, after);
+
+  const emergent = detectEmergentEvents(state, finalized, beforeMetrics, after);
 
   const impactSummary = changes
     .filter((c) =>
@@ -1029,13 +471,14 @@ function simulateDecision(
     .join(' · ');
 
   const summaryEvent = generateSimulationEvent({
-    day,
+    day: finalized.day,
     eventType: 'metric_change',
     title: 'Metrics recalculated',
     description: `After "${decision.title}", simulation pressures were recomputed.`,
     impact: impactSummary || 'No metric deltas',
     relatedDecisionId: decision.id,
     relatedDecisionTitle: decision.title,
+    seq: 90 + state.decisionsHistory.length,
   });
 
   const result: DecisionResult = {
@@ -1043,11 +486,12 @@ function simulateDecision(
     decisionTitle: decision.title,
     decisionDescription: decision.description,
     category: decision.category,
-    before,
+    before: beforeMetrics,
     after,
     changes,
     consequences: outcome.consequences,
-    events: [...outcome.events, summaryEvent],
+    consequenceSummaries: consequenceSummaries(outcome.consequences),
+    events: [...outcome.events, ...emergent, summaryEvent],
     impactChain: outcome.impactChain,
     estimatedImpact: decision.estimatedImpact,
     possibleRisks: decision.possibleRisks,
@@ -1055,8 +499,10 @@ function simulateDecision(
 
   const next: SimulationState = {
     ...finalized,
-    events: [summaryEvent, ...finalized.events],
+    events: [summaryEvent, ...emergent, ...finalized.events],
     lastResult: result,
+    recentChanges,
+    narrative: generateNarrative({ ...finalized, recentChanges }),
   };
 
   return { next, result };
@@ -1069,27 +515,25 @@ export function previewDecision(
 ): DecisionResult | null {
   const decision = state.availableDecisions.find((d) => d.id === decisionId);
   if (!decision || !decision.available) return null;
-
-  // Preview advances the day the same way apply does, but returns only the result.
-  const { result } = simulateDecision(state, decision, true);
+  const { result } = simulateDecision(state, decision);
   return result;
 }
 
-/** Apply a decision and return the new simulation state. */
+/** Apply a decision and return the new simulation state (does not advance the day). */
 export function applyDecision(
   state: SimulationState,
   decisionId: string,
 ): SimulationState {
   const decision = state.availableDecisions.find((d) => d.id === decisionId);
   if (!decision || !decision.available) return state;
-
-  const { next } = simulateDecision(state, decision, true);
+  const { next } = simulateDecision(state, decision);
   return next;
 }
 
 /** Recompute metrics / status from the current world (no decision). */
 export function simulate(state: SimulationState): SimulationState {
-  return finalizeState(cloneState(state));
+  const cloned = cloneState(state);
+  return finalizeState(cloned);
 }
 
 export function simulateConsequences(
@@ -1099,27 +543,82 @@ export function simulateConsequences(
   return previewDecision(state, decisionId);
 }
 
+/**
+ * Advance the simulation by one day — deterministic.
+ * Tasks progress from team capacity; risks evolve; events may fire; metrics recalculate.
+ */
 export function advanceDay(state: SimulationState): SimulationState {
   if (state.day >= state.deadlineDays) {
     return state;
   }
 
+  const beforeMetrics = { ...state.metrics };
   const day = state.day + 1;
+  const teamCapacity = state.metrics.teamCapacity;
+  const dailyThroughput = Math.max(0.35, teamCapacity / 85) * Math.max(1, state.team.length) * 0.4;
+
+  let remainingThroughput = dailyThroughput;
   const tasks = state.tasks.map((task) => {
-    if (task.status === 'in_progress' && day >= task.dayEnd) {
-      return { ...task, status: 'completed' as const };
-    }
     if (task.status === 'pending' && day >= task.dayStart) {
       return { ...task, status: 'in_progress' as const };
+    }
+    if (task.status === 'in_progress') {
+      const progress = Math.min(task.estimatedDays, remainingThroughput * (task.priority === 'high' ? 1.15 : 1));
+      remainingThroughput = Math.max(0, remainingThroughput - progress);
+      const newEst = task.estimatedDays - progress;
+      if (newEst <= 0.2 || (day >= task.dayEnd && teamCapacity >= 45)) {
+        return { ...task, estimatedDays: Math.max(0, newEst), status: 'completed' as const };
+      }
+      // Overload: stretch end date slightly
+      if (teamCapacity < 35 && day >= task.dayEnd - 1) {
+        return {
+          ...task,
+          estimatedDays: Math.max(0.25, newEst),
+          dayEnd: Math.min(state.deadlineDays, task.dayEnd + 1),
+        };
+      }
+      return { ...task, estimatedDays: Math.max(0.25, newEst) };
     }
     return task;
   });
 
-  const completedNow = tasks.filter(
-    (t, i) => t.status === 'completed' && state.tasks[i]?.status !== 'completed',
-  );
+  // Ramp onboarded contractors toward full capacity each day
+  const team = state.team.map((m) => {
+    if (m.capacity < 75 && m.role.toLowerCase().includes('contractor')) {
+      return { ...m, capacity: clamp(m.capacity + 8, 35, 85) };
+    }
+    return m;
+  });
 
-  const event =
+  // Soft resource burn each day
+  const resources = state.resources.map((r) => {
+    if (r.type === 'budget' || r.type === 'time') {
+      const burn = Math.max(1, Math.round(r.amount * 0.02));
+      return { ...r, remaining: Math.max(0, r.remaining - burn) };
+    }
+    return r;
+  });
+
+  let draft: SimulationState = {
+    ...state,
+    day,
+    tasks,
+    team,
+    resources,
+  };
+
+  const interimMetrics = computeMetrics(draft);
+  draft = {
+    ...draft,
+    risks: evolveRisks(draft, interimMetrics),
+  };
+
+  const completedNow = tasks.filter((t) => {
+    const prev = state.tasks.find((p) => p.id === t.id);
+    return t.status === 'completed' && prev?.status !== 'completed';
+  });
+
+  const dayEvent =
     completedNow.length > 0
       ? generateSimulationEvent({
           day,
@@ -1127,22 +626,32 @@ export function advanceDay(state: SimulationState): SimulationState {
           title: 'Tasks completed',
           description: completedNow.map((t) => t.title).join('; '),
           impact: `${completedNow.length} task(s) closed`,
+          seq: 0,
         })
       : generateSimulationEvent({
           day,
           eventType: 'day_advanced',
           title: 'Day advanced',
-          description: `Simulation moved to day ${day}.`,
+          description: `Simulation moved to day ${day}. Team throughput applied to in-progress work.`,
           impact: `${remainingDaysOf(day, state.deadlineDays)} days remaining`,
+          seq: 0,
         });
 
-  return finalizeState({
-    ...state,
-    day,
-    tasks,
-    events: [event, ...state.events],
+  const finalized = finalizeState({
+    ...draft,
+    events: [dayEvent, ...state.events],
     lastConsequence: `Advanced to day ${day}.`,
   });
+
+  const emergent = detectEmergentEvents(state, finalized, beforeMetrics, finalized.metrics);
+  const recentChanges = recentChangesFromMetrics(beforeMetrics, finalized.metrics);
+
+  return {
+    ...finalized,
+    events: [...emergent, ...finalized.events],
+    recentChanges,
+    narrative: generateNarrative({ ...finalized, recentChanges }),
+  };
 }
 
 /** Direct world mutations — designed as future WebMCP tool targets. */
@@ -1253,4 +762,7 @@ export function getSimulationState(state: SimulationState): SimulationState {
   return state;
 }
 
+export { generateSimulationEvent };
+export { getAvailableDecisions } from './decisions';
 export { METRIC_LABELS };
+export type { EventType };

@@ -1,4 +1,4 @@
-import type { DecisionResult, ImpactStep } from '../types';
+import type { Consequence, DecisionResult, ImpactStep } from '../types';
 
 interface ImpactAnalysisProps {
   preview: DecisionResult | null;
@@ -16,12 +16,29 @@ function StepBlock({ step, index }: { step: ImpactStep; index: number }) {
   );
 }
 
+function ConsequenceRow({ item }: { item: Consequence }) {
+  return (
+    <li className={`consequence-row consequence-row--${item.type}`}>
+      <span className="consequence-row__type">{item.type}</span>
+      <div>
+        <strong>{item.title}</strong>
+        <p>{item.description}</p>
+      </div>
+      {item.severity && (
+        <span className={`consequence-row__severity consequence-row__severity--${item.severity}`}>
+          {item.severity}
+        </span>
+      )}
+    </li>
+  );
+}
+
 export function ImpactAnalysis({ preview }: ImpactAnalysisProps) {
   return (
     <section className="panel impact-analysis" aria-labelledby="impact-heading">
       <header className="panel__header">
         <h2 id="impact-heading">Impact Analysis</h2>
-        <p>Decision → direct effects → secondary effects → project outcome</p>
+        <p>Decision → effects → emergent consequences → new world state</p>
       </header>
 
       {!preview && (
@@ -45,6 +62,17 @@ export function ImpactAnalysis({ preview }: ImpactAnalysisProps) {
             ))}
           </div>
 
+          {preview.consequences.length > 0 && (
+            <div>
+              <span className="impact-analysis__label">Consequence graph</span>
+              <ul className="consequence-list">
+                {preview.consequences.map((item) => (
+                  <ConsequenceRow key={item.id} item={item} />
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="impact-analysis__meta">
             <div>
               <span className="impact-analysis__label">Estimated impact</span>
@@ -58,16 +86,6 @@ export function ImpactAnalysis({ preview }: ImpactAnalysisProps) {
                 <ul className="impact-analysis__risks">
                   {preview.possibleRisks.map((risk) => (
                     <li key={risk}>{risk}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {preview.consequences.length > 0 && (
-              <div>
-                <span className="impact-analysis__label">Consequences</span>
-                <ul className="impact-analysis__risks">
-                  {preview.consequences.map((item) => (
-                    <li key={item}>{item}</li>
                   ))}
                 </ul>
               </div>

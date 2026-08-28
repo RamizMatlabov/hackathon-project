@@ -44,7 +44,8 @@ export type MetricKey =
   | 'teamCapacity'
   | 'openTasks'
   | 'remainingDays'
-  | 'teamSize';
+  | 'teamSize'
+  | 'outcomeQuality';
 
 export type EventType =
   | 'system'
@@ -54,7 +55,23 @@ export type EventType =
   | 'team_change'
   | 'task_change'
   | 'metric_change'
-  | 'day_advanced';
+  | 'day_advanced'
+  | 'emergent';
+
+export type ConsequenceType = 'direct' | 'secondary' | 'emergent';
+
+export type ConsequenceSeverity = 'low' | 'medium' | 'high';
+
+/** Generic multi-level consequence produced by a decision or day advance. */
+export interface Consequence {
+  id: string;
+  type: ConsequenceType;
+  title: string;
+  description: string;
+  metric?: string;
+  value?: number;
+  severity?: ConsequenceSeverity;
+}
 
 export interface Goal {
   id: string;
@@ -125,7 +142,7 @@ export interface Decision {
   effects: DecisionEffectSpec[];
   possibleRisks: string[];
   estimatedImpact: ImpactLevel;
-  /** Payload varies by decision kind */
+  /** Payload varies by decision kind — must stay JSON-serializable. */
   payload?: Record<string, unknown>;
 }
 
@@ -138,6 +155,8 @@ export interface SimulationMetrics {
   openTasks: number;
   remainingDays: number;
   teamSize: number;
+  /** Soft quality / ambition score 0–100; eroded by scope cuts. */
+  outcomeQuality: number;
 }
 
 export interface MetricChange {
@@ -148,7 +167,7 @@ export interface MetricChange {
   unit?: '%' | 'count' | 'days';
 }
 
-export type ImpactStepKind = 'decision' | 'direct' | 'secondary' | 'outcome';
+export type ImpactStepKind = 'decision' | 'direct' | 'secondary' | 'emergent' | 'outcome';
 
 export interface ImpactStep {
   kind: ImpactStepKind;
@@ -178,7 +197,10 @@ export interface DecisionResult {
   before: SimulationMetrics;
   after: SimulationMetrics;
   changes: MetricChange[];
-  consequences: string[];
+  /** Structured multi-level consequences. */
+  consequences: Consequence[];
+  /** Human-readable summaries derived from consequences. */
+  consequenceSummaries: string[];
   events: SimulationEvent[];
   impactChain: ImpactStep[];
   estimatedImpact: ImpactLevel;
@@ -196,6 +218,25 @@ export interface Scenario {
   riskTolerance: RiskTolerance;
   createdAt: number;
   lastOpenedAt: number;
+}
+
+export interface RecentChange {
+  id: string;
+  label: string;
+  direction: 'increase' | 'decrease' | 'neutral';
+  detail?: string;
+}
+
+export interface ScenarioCompareSnapshot {
+  label: string;
+  decisionTitle: string | null;
+  metrics: SimulationMetrics;
+}
+
+export interface ScenarioCompareResult {
+  scenarioA: ScenarioCompareSnapshot;
+  scenarioB: ScenarioCompareSnapshot;
+  deltas: MetricChange[];
 }
 
 export interface SimulationState {
@@ -220,6 +261,12 @@ export interface SimulationState {
   lastDecisionId: string | null;
   lastConsequence: string | null;
   lastResult: DecisionResult | null;
+  /** Metric / world deltas from the last applied action or day advance. */
+  recentChanges: RecentChange[];
+  /** Deterministic narrative for "What happens next?" */
+  narrative: string;
+  /** Soft outcome quality tracked across decisions. */
+  outcomeQuality: number;
 }
 
 export interface ScenarioDraft {

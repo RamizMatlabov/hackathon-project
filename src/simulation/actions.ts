@@ -1,25 +1,28 @@
 /**
  * Application action surface for LifeSim.
  *
- * These functions are the stable entry points that future WebMCP tools
- * will call. UI and agents should prefer this module over reaching into
- * React state or engine internals.
+ * Stable, JSON-serializable entry points for UI and future WebMCP tools.
+ * Prefer this module over reaching into React state or engine internals.
  */
 import type {
   Resource,
   Scenario,
+  ScenarioCompareResult,
   ScenarioDraft,
   SimulationState,
   Task,
   TeamMember,
 } from '../types';
+import { compareScenarios } from './compare';
 import {
   addResource as engineAddResource,
   addTask as engineAddTask,
   addTeamMember as engineAddTeamMember,
+  advanceDay as engineAdvanceDay,
   applyDecision as engineApplyDecision,
   changeDeadline as engineChangeDeadline,
   createSimulationFromScenario,
+  getAvailableDecisions as engineGetAvailableDecisions,
   getSimulationState as engineGetSimulationState,
   previewDecision as enginePreviewDecision,
   removeTask as engineRemoveTask,
@@ -78,4 +81,29 @@ export function addTeamMember(
 
 export function simulate(state: SimulationState): SimulationState {
   return engineSimulate(state);
+}
+
+export function advanceDay(state: SimulationState): SimulationState {
+  return engineAdvanceDay(state);
+}
+
+export function getAvailableDecisions(state: SimulationState) {
+  return engineGetAvailableDecisions(state);
+}
+
+export function compareScenarioBranch(
+  state: SimulationState,
+  decisionId: string | null,
+): ScenarioCompareResult {
+  return compareScenarios(state, decisionId);
+}
+
+/** Materialize a temporary branch by applying a decision (does not touch caller's state). */
+export function createScenarioBranch(
+  state: SimulationState,
+  decisionId: string,
+): SimulationState | null {
+  const decision = state.availableDecisions.find((d) => d.id === decisionId);
+  if (!decision || !decision.available) return null;
+  return engineApplyDecision(state, decisionId);
 }

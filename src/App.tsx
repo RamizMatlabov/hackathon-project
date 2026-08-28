@@ -26,6 +26,7 @@ export default function App() {
         onHome={app.openDashboard}
         onDecide={app.makeDecision}
         onAdvanceDay={app.stepDay}
+        onSimulate={app.recalculate}
       />
     );
   }

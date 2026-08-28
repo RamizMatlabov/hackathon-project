@@ -1,6 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DEMO_SCENARIOS } from '../data/mockScenarios';
-import { advanceDay, applyDecision, createSimulationFromScenario } from '../simulation/engine';
+import {
+  advanceDay,
+  applyDecision,
+  simulate,
+  startSimulation as startSimAction,
+} from '../simulation/actions';
 import type { AppView, Scenario, ScenarioDraft, SimulationState } from '../types';
 import {
   createDraftFromTemplate,
@@ -41,7 +46,7 @@ export function useLifeSimApp() {
 
   const startSimulation = useCallback(
     (scenario: Scenario) => {
-      const next = createSimulationFromScenario(scenario);
+      const next = startSimAction(scenario);
       setSimulation(next);
       touchScenario(scenario.id);
       setView('simulation');
@@ -73,6 +78,10 @@ export function useLifeSimApp() {
     setSimulation((prev) => (prev ? advanceDay(prev) : prev));
   }, []);
 
+  const recalculate = useCallback(() => {
+    setSimulation((prev) => (prev ? simulate(prev) : prev));
+  }, []);
+
   return {
     view,
     scenarios: recentScenarios,
@@ -86,5 +95,6 @@ export function useLifeSimApp() {
     openScenario,
     makeDecision,
     stepDay,
+    recalculate,
   };
 }

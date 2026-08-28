@@ -24,7 +24,8 @@ function deltaClass(change: MetricChange): string {
     change.metric === 'successProbability' ||
     change.metric === 'teamCapacity' ||
     change.metric === 'remainingDays' ||
-    change.metric === 'teamSize';
+    change.metric === 'teamSize' ||
+    change.metric === 'outcomeQuality';
 
   const improved = higherIsBetter ? delta > 0 : delta < 0;
   return improved ? 'is-better' : 'is-worse';
@@ -38,6 +39,7 @@ const PRIMARY_METRICS = new Set([
   'teamCapacity',
   'openTasks',
   'remainingDays',
+  'outcomeQuality',
 ]);
 
 export function BeforeAfterCompare({ preview }: BeforeAfterCompareProps) {

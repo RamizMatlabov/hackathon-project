@@ -22,8 +22,8 @@ export function DecisionPanel({
   return (
     <section className="panel decision-panel" aria-labelledby="decision-heading">
       <header className="panel__header">
-        <h2 id="decision-heading">Decision desk</h2>
-        <p>Select a decision to preview consequences. Apply only when you commit.</p>
+        <h2 id="decision-heading">Decide</h2>
+        <p>Observe the world, select a decision, preview, then apply.</p>
       </header>
 
       {lastConsequence && !hasPreview && (
@@ -56,7 +56,7 @@ export function DecisionPanel({
                   <span className="decision-card__category">{decision.category}</span>
                   <span className="decision-card__action">
                     {!decision.available
-                      ? 'Unavailable'
+                      ? 'Unavailable in this world'
                       : selected
                         ? 'Selected · preview below'
                         : 'Select to preview'}
@@ -70,7 +70,7 @@ export function DecisionPanel({
 
       {hasPreview && (
         <div className="decision-panel__commit">
-          <p>Preview is ready. Applying will mutate the live simulation.</p>
+          <p>Preview ready — apply to mutate the live world, then simulate a day.</p>
           <div className="decision-panel__commit-actions">
             <button type="button" className="btn btn--primary" onClick={onApply}>
               Apply Decision
