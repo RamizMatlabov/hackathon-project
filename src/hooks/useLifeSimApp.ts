@@ -87,6 +87,7 @@ export function useLifeSimApp() {
     scenarios: recentScenarios,
     draft,
     simulation,
+    setSimulation,
     draftValid: isDraftValid(draft),
     openDashboard,
     openBuilder,

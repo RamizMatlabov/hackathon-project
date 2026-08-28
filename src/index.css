@@ -1902,3 +1902,224 @@ img {
     align-items: flex-start;
   }
 }
+
+/* WebMCP agent integration */
+.webmcp-status {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(13, 17, 24, 0.92);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.webmcp-status__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.webmcp-status--ready .webmcp-status__dot {
+  background: var(--good);
+  box-shadow: 0 0 0 4px var(--good-soft);
+}
+
+.webmcp-status--available .webmcp-status__dot,
+.webmcp-status--registering .webmcp-status__dot {
+  background: var(--warn);
+}
+
+.webmcp-status--registration_error .webmcp-status__dot,
+.webmcp-status--unsupported .webmcp-status__dot {
+  background: var(--danger);
+}
+
+.webmcp-status__text {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.webmcp-status__text strong {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.webmcp-status__meta {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.webmcp-debug {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 41;
+  max-width: min(34rem, calc(100vw - 2rem));
+}
+
+.webmcp-debug__toggle {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  background: rgba(13, 17, 24, 0.92);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.webmcp-debug__panel {
+  margin-top: 0.5rem;
+  max-height: min(50vh, 28rem);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(7, 9, 13, 0.96);
+  box-shadow: var(--shadow);
+  padding: 0.75rem;
+}
+
+.webmcp-debug__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.webmcp-debug__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.webmcp-debug__diagnostics {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+}
+
+.webmcp-debug__diagnostics div {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.5rem;
+}
+
+.webmcp-debug__diagnostics dt {
+  margin: 0;
+  font-family: var(--mono);
+  color: var(--text-dim);
+}
+
+.webmcp-debug__diagnostics dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.webmcp-debug__header p,
+.webmcp-debug__empty,
+.webmcp-debug__error {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.webmcp-debug__error {
+  color: var(--danger);
+}
+
+.webmcp-debug__label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.webmcp-debug__tools ul,
+.webmcp-debug__log ol,
+.webmcp-debug__failures ul,
+.webmcp-debug__self-test ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.webmcp-debug__log li {
+  margin-bottom: 0.65rem;
+}
+
+.webmcp-debug__log li.is-error {
+  color: var(--danger);
+}
+
+.webmcp-debug__call-meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.webmcp-debug__call-meta span {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.webmcp-debug pre {
+  margin: 0.2rem 0 0;
+  padding: 0.45rem;
+  border-radius: 6px;
+  background: var(--bg-2);
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.webmcp-debug__failures li,
+.webmcp-debug__self-test li {
+  margin-bottom: 0.45rem;
+}
+
+.webmcp-debug__failures li span,
+.webmcp-debug__self-test li span {
+  display: block;
+  color: var(--text-dim);
+}
+
+.webmcp-debug__self-test li {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.webmcp-debug__self-test li.is-pass strong {
+  color: var(--good);
+}
+
+.webmcp-debug__self-test li.is-fail strong {
+  color: var(--danger);
+}
+
+.webmcp-debug__summary {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text);
+}

@@ -1,42 +1,72 @@
 import { useLifeSimApp } from './hooks/useLifeSimApp';
+import { useWebMCP } from './hooks/useWebMCP';
 import { Dashboard } from './pages/Dashboard';
 import { ScenarioBuilder } from './pages/ScenarioBuilder';
 import { SimulationWorkspace } from './pages/SimulationWorkspace';
+import { WebMCPDebugPanel } from './components/WebMCPDebugPanel';
+import { WebMCPStatus } from './components/WebMCPStatus';
 
 export default function App() {
   const app = useLifeSimApp();
+  const webmcp = useWebMCP(app.simulation, app.setSimulation);
+
+  const chrome = (
+    <>
+      <WebMCPStatus
+        registration={webmcp.registration}
+        hasSimulation={app.simulation != null}
+      />
+      <WebMCPDebugPanel
+        registration={webmcp.registration}
+        entries={webmcp.debugLog}
+        selfTest={webmcp.selfTest}
+        selfTestRunning={webmcp.selfTestRunning}
+        onRunSelfTest={webmcp.runSelfTest}
+        onClear={webmcp.clearDebugLog}
+      />
+    </>
+  );
 
   if (app.view === 'builder') {
     return (
-      <ScenarioBuilder
-        draft={app.draft}
-        valid={app.draftValid}
-        onChange={app.updateDraft}
-        onBack={app.openDashboard}
-        onStart={app.startFromDraft}
-        onPrefill={() => app.openBuilder(true)}
-      />
+      <>
+        {chrome}
+        <ScenarioBuilder
+          draft={app.draft}
+          valid={app.draftValid}
+          onChange={app.updateDraft}
+          onBack={app.openDashboard}
+          onStart={app.startFromDraft}
+          onPrefill={() => app.openBuilder(true)}
+        />
+      </>
     );
   }
 
   if (app.view === 'simulation' && app.simulation) {
     return (
-      <SimulationWorkspace
-        state={app.simulation}
-        onHome={app.openDashboard}
-        onDecide={app.makeDecision}
-        onAdvanceDay={app.stepDay}
-        onSimulate={app.recalculate}
-      />
+      <>
+        {chrome}
+        <SimulationWorkspace
+          state={app.simulation}
+          onHome={app.openDashboard}
+          onDecide={app.makeDecision}
+          onAdvanceDay={app.stepDay}
+          onSimulate={app.recalculate}
+        />
+      </>
     );
   }
 
   return (
-    <Dashboard
-      scenarios={app.scenarios}
-      onCreate={() => app.openBuilder(false)}
-      onCreateFromTemplate={() => app.openBuilder(true)}
-      onOpenScenario={app.openScenario}
-    />
+    <>
+      {chrome}
+      <Dashboard
+        scenarios={app.scenarios}
+        onCreate={() => app.openBuilder(false)}
+        onCreateFromTemplate={() => app.openBuilder(true)}
+        onOpenScenario={app.openScenario}
+      />
+    </>
   );
 }
