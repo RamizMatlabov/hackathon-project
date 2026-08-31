@@ -2123,3 +2123,71 @@ img {
   font-size: 0.75rem;
   color: var(--text);
 }
+
+/* Agent activity feed */
+.agent-activity__empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.agent-activity__list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.agent-activity__item {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: rgba(63, 191, 168, 0.06);
+  border: 1px solid rgba(63, 191, 168, 0.12);
+}
+
+.agent-activity__item.is-error {
+  background: var(--danger-soft);
+  border-color: rgba(226, 107, 107, 0.2);
+}
+
+.agent-activity__item strong {
+  display: block;
+  font-size: 0.82rem;
+}
+
+.agent-activity__meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.activity-log__actor {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.activity-log__actor--agent {
+  background: rgba(63, 191, 168, 0.15);
+  color: var(--accent);
+}
+
+.activity-log__actor--user {
+  background: rgba(224, 164, 90, 0.15);
+  color: var(--warn);
+}
+
+.scenario-compare__signal {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.scenario-compare__signal strong {
+  color: var(--accent);
+}

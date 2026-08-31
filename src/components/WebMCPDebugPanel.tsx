@@ -18,6 +18,14 @@ function capabilityLabel(state: 'available' | 'unavailable'): string {
   return state === 'available' ? 'available' : 'unavailable';
 }
 
+function formatTimestamp(ts: number): string {
+  return new Date(ts).toLocaleTimeString();
+}
+
+function resultStatus(entry: WebMCPDebugEntry): string {
+  return entry.result.success ? 'success' : `error (${entry.result.code})`;
+}
+
 export function WebMCPDebugPanel({
   registration,
   entries,
@@ -151,6 +159,9 @@ export function WebMCPDebugPanel({
                     <div className="webmcp-debug__call-meta">
                       <strong>{entry.tool}</strong>
                       <span>{entry.category}</span>
+                      <span>{entry.readOnly ? 'read-only' : 'mutation'}</span>
+                      <span>{resultStatus(entry)}</span>
+                      <span>{formatTimestamp(entry.timestamp)}</span>
                       <span>{entry.durationMs}ms</span>
                     </div>
                     <pre>{JSON.stringify(entry.args, null, 2)}</pre>

@@ -1,4 +1,4 @@
-import type { EventType, SimulationEvent, SimulationMetrics, SimulationState } from '../types';
+import type { EventActorSource, EventType, SimulationEvent, SimulationMetrics, SimulationState } from '../types';
 import { clamp, stableId } from '../utils/helpers';
 import { conditions } from './conditions';
 
@@ -24,6 +24,7 @@ export function generateSimulationEvent(input: {
   relatedDecisionId?: string | null;
   relatedDecisionTitle?: string | null;
   seq?: number;
+  actorSource?: EventActorSource;
 }): SimulationEvent {
   return {
     id: stableId('evt', input.day, input.eventType, input.title, input.seq ?? 0),
@@ -35,6 +36,7 @@ export function generateSimulationEvent(input: {
     impact: input.impact,
     relatedDecisionId: input.relatedDecisionId ?? null,
     relatedDecisionTitle: input.relatedDecisionTitle ?? null,
+    actorSource: input.actorSource ?? 'system',
     category: CATEGORY_MAP[input.eventType],
   };
 }

@@ -24,18 +24,40 @@ export function ActivityLog({ events }: ActivityLogProps) {
         <p>Chronological cause and effect from the simulation</p>
       </header>
       <ol className="activity-log__list">
-        {events.map((event) => (
+        {events.map((event) => {
+          const actorPrefix =
+            event.actorSource === 'agent'
+              ? '🤖 '
+              : event.actorSource === 'user'
+                ? '👤 '
+                : '';
+
+          const displayTitle =
+            event.actorSource === 'agent' || event.actorSource === 'user'
+              ? event.description
+              : event.title;
+
+          return (
           <li
             key={event.id}
-            className={`activity-log__item activity-log__item--${event.category}`}
+            className={`activity-log__item activity-log__item--${event.category} activity-log__item--${event.actorSource}`}
           >
             <div className="activity-log__meta">
               <span className="activity-log__day">Day {event.day}</span>
               <span className="activity-log__category">
                 {TYPE_LABELS[event.eventType]}
               </span>
+              {(event.actorSource === 'agent' || event.actorSource === 'user') && (
+                <span className={`activity-log__actor activity-log__actor--${event.actorSource}`}>
+                  {event.actorSource === 'agent' ? 'Agent' : 'User'}
+                </span>
+              )}
             </div>
-            <strong className="activity-log__title">{event.title}</strong>
+            <strong className="activity-log__title">
+              {event.actorSource === 'agent' || event.actorSource === 'user'
+                ? `${actorPrefix}${event.title}: ${displayTitle}`
+                : event.title}
+            </strong>
             <p className="activity-log__detail">{event.description}</p>
             {event.impact && (
               <p className="activity-log__impact">
@@ -48,7 +70,8 @@ export function ActivityLog({ events }: ActivityLogProps) {
               </p>
             )}
           </li>
-        ))}
+          );
+        })}
       </ol>
     </section>
   );

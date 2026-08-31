@@ -1,19 +1,19 @@
 import type { SimulationState } from '../types';
 import { generateSimulationEvent } from '../simulation/emergentEvents';
 
-/** Prepend a visible activity-log entry when an agent mutates simulation state. */
-export function appendAgentActionEvent(
+/** Prepend a visible activity-log entry when the user mutates simulation state via UI. */
+export function appendUserActionEvent(
   state: SimulationState,
   detail: string,
 ): SimulationState {
   const event = generateSimulationEvent({
     day: state.day,
     eventType: 'system',
-    title: 'Agent action',
+    title: 'User action',
     description: detail,
-    impact: 'Simulation updated by AI agent via WebMCP',
-    seq: 9000 + state.events.length,
-    actorSource: 'agent',
+    impact: 'Simulation updated manually in the workspace',
+    seq: 8000 + state.events.length,
+    actorSource: 'user',
   });
 
   return {

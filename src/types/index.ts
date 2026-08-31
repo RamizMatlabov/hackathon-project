@@ -175,6 +175,8 @@ export interface ImpactStep {
   detail?: string;
 }
 
+export type EventActorSource = 'system' | 'user' | 'agent';
+
 export interface SimulationEvent {
   id: string;
   timestamp: number;
@@ -185,6 +187,8 @@ export interface SimulationEvent {
   impact: string;
   relatedDecisionId: string | null;
   relatedDecisionTitle: string | null;
+  /** Who triggered this entry — used to distinguish agent vs user vs system. */
+  actorSource: EventActorSource;
   /** @deprecated Prefer eventType; kept for existing CSS hooks */
   category: 'system' | 'decision' | 'risk' | 'resource' | 'team' | 'task';
 }
@@ -218,6 +222,10 @@ export interface Scenario {
   riskTolerance: RiskTolerance;
   createdAt: number;
   lastOpenedAt: number;
+  /** Optional scenario-specific bootstrap data for simulation init. */
+  initialTasks?: Task[];
+  initialRisks?: Risk[];
+  startDay?: number;
 }
 
 export interface RecentChange {
@@ -230,13 +238,25 @@ export interface RecentChange {
 export interface ScenarioCompareSnapshot {
   label: string;
   decisionTitle: string | null;
+  decisionId: string | null;
   metrics: SimulationMetrics;
 }
+
+export type CompareRecommendationSignal =
+  | 'better_for_success'
+  | 'better_for_speed'
+  | 'better_for_resources'
+  | 'tradeoff'
+  | 'neutral';
 
 export interface ScenarioCompareResult {
   scenarioA: ScenarioCompareSnapshot;
   scenarioB: ScenarioCompareSnapshot;
   deltas: MetricChange[];
+  /** Machine-readable signal for agent reasoning — not a user directive. */
+  recommendation: CompareRecommendationSignal;
+  /** Brief rationale tied to metric deltas. */
+  recommendationRationale: string;
 }
 
 export interface SimulationState {
@@ -246,6 +266,8 @@ export interface SimulationState {
   day: number;
   deadlineDays: number;
   remainingDays: number;
+  /** Monotonic counter bumped on each mutation — ties previews to live state. */
+  simulationVersion: number;
   status: SimulationStatus;
   successProbability: number;
   metrics: SimulationMetrics;

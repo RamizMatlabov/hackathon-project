@@ -7,6 +7,7 @@ import {
   startSimulation as startSimAction,
 } from '../simulation/actions';
 import type { AppView, Scenario, ScenarioDraft, SimulationState } from '../types';
+import { appendUserActionEvent } from '../webmcp/userEvents';
 import {
   createDraftFromTemplate,
   createEmptyDraft,
@@ -71,11 +72,22 @@ export function useLifeSimApp() {
   );
 
   const makeDecision = useCallback((decisionId: string) => {
-    setSimulation((prev) => (prev ? applyDecision(prev, decisionId) : prev));
+    setSimulation((prev) => {
+      if (!prev) return prev;
+      const decision = prev.availableDecisions.find((d) => d.id === decisionId);
+      const next = applyDecision(prev, decisionId);
+      if (!decision) return next;
+      return appendUserActionEvent(next, `Applied: ${decision.title}`);
+    });
   }, []);
 
   const stepDay = useCallback(() => {
-    setSimulation((prev) => (prev ? advanceDay(prev) : prev));
+    setSimulation((prev) => {
+      if (!prev) return prev;
+      if (prev.day >= prev.deadlineDays) return prev;
+      const next = advanceDay(prev);
+      return appendUserActionEvent(next, 'Advanced the simulation by one day.');
+    });
   }, []);
 
   const recalculate = useCallback(() => {

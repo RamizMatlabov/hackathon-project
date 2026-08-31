@@ -94,8 +94,9 @@ export function getAvailableDecisions(state: SimulationState) {
 export function compareScenarioBranch(
   state: SimulationState,
   decisionId: string | null,
+  versusDecisionId?: string | null,
 ): ScenarioCompareResult {
-  return compareScenarios(state, decisionId);
+  return compareScenarios(state, decisionId, { versusDecisionId });
 }
 
 /** Materialize a temporary branch by applying a decision (does not touch caller's state). */

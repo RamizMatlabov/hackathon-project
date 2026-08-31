@@ -243,6 +243,13 @@ function deriveStatus(metrics: SimulationMetrics, risks: Risk[]): SimulationStat
   return 'on_track';
 }
 
+function bumpVersion(state: SimulationState): SimulationState {
+  return {
+    ...state,
+    simulationVersion: (state.simulationVersion ?? 1) + 1,
+  };
+}
+
 function finalizeState(
   state: SimulationState,
   options?: { recentChanges?: RecentChange[]; preserveNarrative?: boolean },
@@ -304,14 +311,20 @@ function cloneState(state: SimulationState): SimulationState {
 
 export function createSimulationFromScenario(scenario: Scenario): SimulationState {
   const team = scenario.team.map((m) => ({ ...m, skills: [...m.skills] }));
-  const tasks = SAMPLE_TASKS.map((t, index) => ({
+  const taskSource = scenario.initialTasks ?? SAMPLE_TASKS;
+  const riskSource = scenario.initialRisks ?? SAMPLE_RISKS;
+  const startDay = scenario.startDay ?? 1;
+  const tasks = taskSource.map((t, index) => ({
     ...t,
-    id: createId('task'),
-    assigneeId: team[index % team.length]?.id ?? null,
+    id: scenario.initialTasks ? (t.id || createId('task')) : createId('task'),
+    assigneeId: t.assigneeId ?? team[index % team.length]?.id ?? null,
     dayEnd: Math.min(t.dayEnd, scenario.deadlineDays),
     dayStart: Math.min(t.dayStart, Math.max(1, scenario.deadlineDays - 1)),
   }));
-  const risks = SAMPLE_RISKS.map((r) => ({ ...r, id: createId('risk') }));
+  const risks = riskSource.map((r) => ({
+    ...r,
+    id: scenario.initialRisks ? (r.id || createId('risk')) : createId('risk'),
+  }));
   const outcomeQuality = 78;
 
   const draft: SimulationState = {
@@ -321,9 +334,10 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       ...scenario.goal,
       successCriteria: [...scenario.goal.successCriteria],
     },
-    day: 1,
+    day: startDay,
     deadlineDays: scenario.deadlineDays,
-    remainingDays: remainingDaysOf(1, scenario.deadlineDays),
+    remainingDays: remainingDaysOf(startDay, scenario.deadlineDays),
+    simulationVersion: 1,
     status: 'on_track',
     successProbability: 0,
     metrics: {
@@ -357,7 +371,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
   const metrics = computeMetrics(draft);
   const events: SimulationEvent[] = [
     generateSimulationEvent({
-      day: 1,
+      day: startDay,
       eventType: 'system',
       title: 'Simulation initialized',
       description: `${scenario.name} is live. Goal: ${scenario.goal.title}.`,
@@ -365,7 +379,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       seq: 0,
     }),
     generateSimulationEvent({
-      day: 1,
+      day: startDay,
       eventType: 'risk_change',
       title: 'Baseline risks assessed',
       description: `${risks.length} active risks scored against current constraints.`,
@@ -373,7 +387,7 @@ export function createSimulationFromScenario(scenario: Scenario): SimulationStat
       seq: 1,
     }),
     generateSimulationEvent({
-      day: 1,
+      day: startDay,
       eventType: 'task_change',
       title: 'Workstream loaded',
       description: `${tasks.length} tasks placed on the timeline across ${scenario.team.length} team members.`,
@@ -503,6 +517,7 @@ function simulateDecision(
     lastResult: result,
     recentChanges,
     narrative: generateNarrative({ ...finalized, recentChanges }),
+    simulationVersion: state.simulationVersion + 1,
   };
 
   return { next, result };
@@ -651,6 +666,7 @@ export function advanceDay(state: SimulationState): SimulationState {
     events: [...emergent, ...finalized.events],
     recentChanges,
     narrative: generateNarrative({ ...finalized, recentChanges }),
+    simulationVersion: state.simulationVersion + 1,
   };
 }
 
@@ -667,11 +683,13 @@ export function changeDeadline(
     description: `Deadline set to ${deadlineDays} days.`,
     impact: `${state.deadlineDays} → ${deadlineDays} days`,
   });
-  return finalizeState({
-    ...state,
-    deadlineDays,
-    events: [event, ...state.events],
-  });
+  return bumpVersion(
+    finalizeState({
+      ...state,
+      deadlineDays,
+      events: [event, ...state.events],
+    }),
+  );
 }
 
 export function addTask(
@@ -689,16 +707,21 @@ export function addTask(
     description: task.title,
     impact: `Open tasks → ${state.metrics.openTasks + (task.status === 'completed' ? 0 : 1)}`,
   });
-  return finalizeState({
-    ...state,
-    tasks: [...state.tasks, task],
-    events: [event, ...state.events],
-  });
+  return bumpVersion(
+    finalizeState({
+      ...state,
+      tasks: [...state.tasks, task],
+      events: [event, ...state.events],
+    }),
+  );
 }
 
 export function removeTask(state: SimulationState, taskId: string): SimulationState {
   const target = state.tasks.find((t) => t.id === taskId);
   if (!target) return state;
+  if (target.status === 'completed') {
+    return state;
+  }
   const event = generateSimulationEvent({
     day: state.day,
     eventType: 'task_change',
@@ -706,11 +729,13 @@ export function removeTask(state: SimulationState, taskId: string): SimulationSt
     description: target.title,
     impact: '−1 task',
   });
-  return finalizeState({
-    ...state,
-    tasks: state.tasks.filter((t) => t.id !== taskId),
-    events: [event, ...state.events],
-  });
+  return bumpVersion(
+    finalizeState({
+      ...state,
+      tasks: state.tasks.filter((t) => t.id !== taskId),
+      events: [event, ...state.events],
+    }),
+  );
 }
 
 export function addResource(
@@ -728,11 +753,13 @@ export function addResource(
     description: `${resource.name} (${resource.remaining} ${resource.unit})`,
     impact: '+1 resource pool',
   });
-  return finalizeState({
-    ...state,
-    resources: [...state.resources, resource],
-    events: [event, ...state.events],
-  });
+  return bumpVersion(
+    finalizeState({
+      ...state,
+      resources: [...state.resources, resource],
+      events: [event, ...state.events],
+    }),
+  );
 }
 
 export function addTeamMember(
@@ -751,11 +778,13 @@ export function addTeamMember(
     description: `${member.name} · ${member.role}`,
     impact: `Team ${state.team.length} → ${state.team.length + 1}`,
   });
-  return finalizeState({
-    ...state,
-    team: [...state.team, member],
-    events: [event, ...state.events],
-  });
+  return bumpVersion(
+    finalizeState({
+      ...state,
+      team: [...state.team, member],
+      events: [event, ...state.events],
+    }),
+  );
 }
 
 export function getSimulationState(state: SimulationState): SimulationState {

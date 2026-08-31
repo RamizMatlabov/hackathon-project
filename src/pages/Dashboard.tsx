@@ -45,6 +45,9 @@ export function Dashboard({
                 Start with sample launch
               </button>
             </div>
+            <p className="hero-sim__hint">
+              Try the agent demo scenario: <strong>Launch a Student Innovation Project</strong> — designed for WebMCP exploration.
+            </p>
           </div>
 
           <div className="hero-sim__visual" aria-hidden="true">
@@ -94,7 +97,7 @@ export function Dashboard({
                   <li key={scenario.id}>
                     <button
                       type="button"
-                      className="scenario-card"
+                      className={`scenario-card${scenario.name.includes('Student Innovation') ? ' scenario-card--featured' : ''}`}
                       onClick={() => onOpenScenario(scenario.id)}
                     >
                       <div>

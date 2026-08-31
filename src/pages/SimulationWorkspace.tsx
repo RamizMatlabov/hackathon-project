@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ActivityLog } from '../components/ActivityLog';
+import { AgentActivity } from '../components/AgentActivity';
 import { BeforeAfterCompare } from '../components/BeforeAfterCompare';
 import { DecisionPanel } from '../components/DecisionPanel';
 import { ImpactAnalysis } from '../components/ImpactAnalysis';
@@ -19,10 +20,12 @@ import {
 } from '../components/WorkspacePanels';
 import { compareScenarioBranch, previewDecision } from '../simulation/actions';
 import type { SimulationState } from '../types';
+import type { WebMCPDebugEntry } from '../webmcp/types';
 import { formatDay } from '../utils/helpers';
 
 interface SimulationWorkspaceProps {
   state: SimulationState;
+  agentActivity: WebMCPDebugEntry[];
   onHome: () => void;
   onDecide: (decisionId: string) => void;
   onAdvanceDay: () => void;
@@ -31,6 +34,7 @@ interface SimulationWorkspaceProps {
 
 export function SimulationWorkspace({
   state,
+  agentActivity,
   onHome,
   onDecide,
   onAdvanceDay,
@@ -141,6 +145,7 @@ export function SimulationWorkspace({
 
         <section className="workspace__world" aria-label="World observation">
           <WorldStatePanel state={state} />
+          <AgentActivity entries={agentActivity} />
           <RecentChangesPanel changes={state.recentChanges} />
           <WhatHappensNext narrative={state.narrative} />
         </section>

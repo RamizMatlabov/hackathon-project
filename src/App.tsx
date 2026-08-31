@@ -49,6 +49,7 @@ export default function App() {
         {chrome}
         <SimulationWorkspace
           state={app.simulation}
+          agentActivity={webmcp.debugLog}
           onHome={app.openDashboard}
           onDecide={app.makeDecision}
           onAdvanceDay={app.stepDay}

@@ -107,6 +107,10 @@ export function ScenarioCompare({
                   );
                 })}
               </ul>
+              <p className="scenario-compare__signal">
+                Signal: <strong>{compare.recommendation}</strong>
+                <span> — {compare.recommendationRationale}</span>
+              </p>
             </div>
           )}
         </div>

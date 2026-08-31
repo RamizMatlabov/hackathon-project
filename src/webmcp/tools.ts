@@ -15,6 +15,11 @@ import {
   simulate,
 } from '../simulation/actions';
 import { appendAgentActionEvent } from './agentEvents';
+import {
+  consumePreview,
+  storePreview,
+  validatePreviewForApply,
+} from './previewStore';
 import { getActiveSimulation, isToolFailure, requireNumber, requireString, toolErr, toolOk } from './results';
 import {
   serializeCompareResult,
@@ -126,9 +131,14 @@ function commitMutation(
   }
 
   const next = mutate(current);
-  const withAgentEvent = appendAgentActionEvent(next, toolName, detail);
+  const withAgentEvent = appendAgentActionEvent(next, detail);
   bridge.setState(() => withAgentEvent);
-  return toolOk(serializeSimulationState(withAgentEvent));
+  return toolOk({
+    ...serializeSimulationState(withAgentEvent),
+    applied: true,
+    tool: toolName,
+    actionDetail: detail,
+  });
 }
 
 export function createLifeSimToolDefinitions(
@@ -141,7 +151,7 @@ export function createLifeSimToolDefinitions(
       category: 'observe',
       readOnly: true,
       description:
-        'Returns the current LifeSim scenario snapshot: deadline, day, tasks, resources, team, risks, metrics, narrative, and recent events. Call this first when the live simulation state is unknown or may have changed.',
+        '[OBSERVE · READ-ONLY] Returns a compact snapshot of the live simulation: scenario, day, remaining days, tasks, resources, team, risks, metrics, available decisions, recent events, and simulationVersion. Does NOT mutate state. Call this first when the world is unknown or may have changed after a mutation.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -159,7 +169,7 @@ export function createLifeSimToolDefinitions(
       category: 'observe',
       readOnly: true,
       description:
-        'Lists structured decision options the simulation currently allows (scope, schedule, team, resources). Use before previewing or applying a decision.',
+        '[OBSERVE · READ-ONLY] Lists structured decision options currently allowed (scope, schedule, team, resources). Does NOT mutate state. Use after get_simulation_state and before preview_decision or apply_decision. Each entry includes id, title, category, availability, and estimated impact.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -179,7 +189,7 @@ export function createLifeSimToolDefinitions(
       category: 'analyze',
       readOnly: true,
       description:
-        'Runs a dry-run of a decision without mutating the live scenario. Returns direct, secondary, and emergent consequences plus before/after metrics. Prefer this for "what if" questions.',
+        '[ANALYZE · READ-ONLY] Dry-runs a decision without mutating live state. Returns previewId, simulationVersion, structured consequences (direct/secondary/emergent), metric deltas, and an explanation block. REQUIRED WORKFLOW: get_simulation_state → get_available_decisions → preview_decision → explain to user → wait for confirmation → apply_decision. Never auto-apply after preview. Input: decision_id from get_available_decisions.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -214,7 +224,13 @@ export function createLifeSimToolDefinitions(
           return toolErr('UNAVAILABLE', 'Preview could not be computed for this decision.');
         }
 
-        return toolOk(serializeDecisionResult(preview));
+        const previewId = storePreview(state, decisionId, decision.title);
+        return toolOk(
+          serializeDecisionResult(preview, {
+            previewId,
+            simulationVersion: state.simulationVersion,
+          }),
+        );
       },
     },
     {
@@ -223,14 +239,19 @@ export function createLifeSimToolDefinitions(
       category: 'analyze',
       readOnly: true,
       description:
-        'Compares the current plan (scenario A) with an alternate branch produced by previewing a decision (scenario B). Use to contrast outcomes before committing.',
+        '[ANALYZE · READ-ONLY] Compares scenario outcomes without mutating state. Default: Scenario A = current plan, Scenario B = preview of decision_id. For head-to-head (e.g. "reduce scope vs add team member"), pass decision_id AND versus_decision_id. Returns metrics (successProbability, risk, timePressure, resourcePressure, teamCapacity, outcomeQuality), deltas, and a recommendation signal (better_for_success | better_for_speed | better_for_resources | tradeoff | neutral) for agent reasoning — not a user directive.',
       inputSchema: {
         type: 'object',
         properties: {
           decision_id: {
             type: 'string',
             description:
-              'Decision to branch from. Omit or pass null to compare against the unchanged current plan.',
+              'Primary alternate decision id. Scenario B uses this unless versus_decision_id is set (then Scenario A).',
+          },
+          versus_decision_id: {
+            type: 'string',
+            description:
+              'Optional second decision for A-vs-B comparison (e.g. reduce scope vs add team member).',
           },
         },
         additionalProperties: false,
@@ -246,15 +267,24 @@ export function createLifeSimToolDefinitions(
             : requireString(rawId, 'decision_id');
         if (isToolFailure(decisionId)) return decisionId;
 
-        if (decisionId) {
-          const decision = state.availableDecisions.find((d) => d.id === decisionId);
+        const rawVersus = input.versus_decision_id;
+        const versusDecisionId =
+          rawVersus == null || rawVersus === ''
+            ? null
+            : requireString(rawVersus, 'versus_decision_id');
+        if (isToolFailure(versusDecisionId)) return versusDecisionId;
+
+        for (const id of [decisionId, versusDecisionId].filter(Boolean) as string[]) {
+          const decision = state.availableDecisions.find((d) => d.id === id);
           if (!decision) {
-            return toolErr('NOT_FOUND', `No decision with id "${decisionId}".`);
+            return toolErr('NOT_FOUND', `No decision with id "${id}".`);
           }
         }
 
         return toolOk(
-          serializeCompareResult(compareScenarioBranch(state, decisionId)),
+          serializeCompareResult(
+            compareScenarioBranch(state, decisionId, versusDecisionId),
+          ),
         );
       },
     },
@@ -264,7 +294,7 @@ export function createLifeSimToolDefinitions(
       category: 'analyze',
       readOnly: true,
       description:
-        'Recomputes metrics and narrative on a cloned copy of the scenario without changing live state. Use to refresh projections after observing state.',
+        '[ANALYZE · READ-ONLY] Recomputes metrics and narrative on a cloned copy without changing live state. Use to refresh projections after observing state. Does not advance the day or apply decisions.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -284,13 +314,18 @@ export function createLifeSimToolDefinitions(
       category: 'act',
       readOnly: false,
       description:
-        'Commits a decision to the live simulation. Mutates tasks, metrics, and the activity log. Use only after preview_decision when the user intends to commit.',
+        '[MUTATE] Commits a decision to the live simulation. Mutates tasks, metrics, events, and increments simulationVersion. Only call after the user confirms a preview_decision result. Optional preview_id validates the preview matches current simulationVersion — stale previews are rejected. Input: decision_id (required), preview_id (recommended).',
       inputSchema: {
         type: 'object',
         properties: {
           decision_id: {
             type: 'string',
             description: 'ID from get_available_decisions.',
+          },
+          preview_id: {
+            type: 'string',
+            description:
+              'previewId returned by preview_decision. Validates preview is still valid for current simulationVersion.',
           },
         },
         required: ['decision_id'],
@@ -303,6 +338,15 @@ export function createLifeSimToolDefinitions(
         const decisionId = requireString(input.decision_id, 'decision_id');
         if (isToolFailure(decisionId)) return decisionId;
 
+        const previewId =
+          input.preview_id == null || input.preview_id === ''
+            ? undefined
+            : requireString(input.preview_id, 'preview_id');
+        if (isToolFailure(previewId)) return previewId;
+
+        const previewError = validatePreviewForApply(previewId, state, decisionId);
+        if (previewError) return previewError;
+
         const decision = state.availableDecisions.find((d) => d.id === decisionId);
         if (!decision) {
           return toolErr('NOT_FOUND', `No decision with id "${decisionId}".`);
@@ -314,10 +358,11 @@ export function createLifeSimToolDefinitions(
           );
         }
 
+        consumePreview(previewId);
         return commitMutation(
           bridge,
           'apply_decision',
-          `Applied decision "${decision.title}".`,
+          `Applied: ${decision.title}`,
           (current) => applyDecision(current, decisionId),
         );
       },
@@ -328,19 +373,28 @@ export function createLifeSimToolDefinitions(
       category: 'act',
       readOnly: false,
       description:
-        'Moves the simulation forward one day, progressing tasks and evolving risks. Mutates live state and logs the day advance.',
+        '[MUTATE] Moves the simulation forward one day. Progresses tasks, evolves risks, may emit events, and increments simulationVersion. Fails with DEADLINE_REACHED if already at the deadline.',
       inputSchema: {
         type: 'object',
         properties: {},
         additionalProperties: false,
       } as const satisfies JsonSchemaForInference,
-      handler: () =>
-        commitMutation(
+      handler: () => {
+        const state = getActiveSimulation(bridge);
+        if (isToolFailure(state)) return state;
+        if (state.day >= state.deadlineDays) {
+          return toolErr(
+            'DEADLINE_REACHED',
+            `Cannot advance day: simulation is already at day ${state.day} of ${state.deadlineDays}.`,
+          );
+        }
+        return commitMutation(
           bridge,
           'advance_day',
           'Advanced the simulation by one day.',
           (current) => advanceDay(current),
-        ),
+        );
+      },
     },
     {
       name: 'change_deadline',
@@ -348,7 +402,7 @@ export function createLifeSimToolDefinitions(
       category: 'act',
       readOnly: false,
       description:
-        'Sets the scenario deadline in total days. Mutates live state. For "what if" deadline questions, preview a move_deadline decision instead of calling this tool.',
+        '[MUTATE] Sets the scenario deadline in total days and increments simulationVersion. For "what if we extend/shrink the deadline?" questions, prefer preview_decision with a move_deadline decision instead. Input: days (integer ≥ 1).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -379,7 +433,7 @@ export function createLifeSimToolDefinitions(
       category: 'act',
       readOnly: false,
       description:
-        'Adds a task to the live scenario. Mutates tasks, metrics, and the activity log.',
+        '[MUTATE] Adds a task to the live scenario. Increments simulationVersion. Required: title, description, estimated_days, day_start, day_end, priority. Optional: status, assignee_id.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -452,7 +506,8 @@ export function createLifeSimToolDefinitions(
       title: 'Remove task',
       category: 'act',
       readOnly: false,
-      description: 'Removes a task by ID from the live scenario.',
+      description:
+        '[MUTATE] Removes a task by task_id from the live scenario. Increments simulationVersion. Fails with TASK_ALREADY_COMPLETED if the task is done. Input: task_id from get_simulation_state.tasks.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -472,6 +527,12 @@ export function createLifeSimToolDefinitions(
         if (!task) {
           return toolErr('NOT_FOUND', `No task with id "${taskId}".`);
         }
+        if (task.status === 'completed') {
+          return toolErr(
+            'TASK_ALREADY_COMPLETED',
+            `Cannot remove task "${task.title}" because it is already completed.`,
+          );
+        }
 
         return commitMutation(
           bridge,
@@ -486,7 +547,8 @@ export function createLifeSimToolDefinitions(
       title: 'Add resource',
       category: 'act',
       readOnly: false,
-      description: 'Adds a resource pool (budget, time, tools, etc.) to the live scenario.',
+      description:
+        '[MUTATE] Adds a resource pool (budget, time, tools, infrastructure, other) to the live scenario. Increments simulationVersion. Required: name, type, amount, unit, remaining.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -535,7 +597,8 @@ export function createLifeSimToolDefinitions(
       title: 'Add team member',
       category: 'act',
       readOnly: false,
-      description: 'Adds a team member with role, capacity, and skills to the live scenario.',
+      description:
+        '[MUTATE] Adds a team member with role, capacity (0–100), and skills to the live scenario. Increments simulationVersion. For "what if we add capacity?" prefer preview_decision with add_team_member first.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -601,6 +664,7 @@ export function wrapToolHandler(
         timestamp: Date.now(),
         tool: definition.name,
         category: definition.category,
+        readOnly: definition.readOnly,
         args,
         result,
         durationMs: Math.round(performance.now() - started),
@@ -616,6 +680,7 @@ export function wrapToolHandler(
         timestamp: Date.now(),
         tool: definition.name,
         category: definition.category,
+        readOnly: definition.readOnly,
         args,
         result,
         durationMs: Math.round(performance.now() - started),

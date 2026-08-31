@@ -21,7 +21,12 @@ export type WebMCPToolErrorCode =
   | 'INVALID_INPUT'
   | 'NOT_FOUND'
   | 'UNAVAILABLE'
-  | 'DECISION_UNAVAILABLE';
+  | 'DECISION_UNAVAILABLE'
+  | 'PREVIEW_STALE'
+  | 'PREVIEW_NOT_FOUND'
+  | 'PREVIEW_MISMATCH'
+  | 'TASK_ALREADY_COMPLETED'
+  | 'DEADLINE_REACHED';
 
 export interface WebMCPToolSuccess<T = unknown> {
   success: true;
@@ -92,6 +97,7 @@ export interface WebMCPDebugEntry {
   timestamp: number;
   tool: WebMCPToolName | string;
   category: WebMCPToolCategory;
+  readOnly: boolean;
   args: unknown;
   result: WebMCPToolResult;
   durationMs: number;
