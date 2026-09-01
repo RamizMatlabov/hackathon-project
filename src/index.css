@@ -633,6 +633,20 @@ img {
   gap: 0.85rem;
 }
 
+.workspace--agent-mutation .workspace__command {
+  animation: agent-mutation-flash 1.8s ease-out;
+}
+
+@keyframes agent-mutation-flash {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  20% {
+    box-shadow: 0 0 0 2px rgba(63, 191, 168, 0.55), 0 0 24px rgba(63, 191, 168, 0.2);
+  }
+}
+
 .command-card {
   display: grid;
   gap: 0.45rem;

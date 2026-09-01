@@ -102,3 +102,22 @@ export interface WebMCPDebugEntry {
   result: WebMCPToolResult;
   durationMs: number;
 }
+
+export type AgentMutationHighlight = 'apply_decision' | 'advance_day';
+
+/** Workspace UI intent emitted after agent tool calls that should mirror in the main UI. */
+export interface AgentUISyncIntent {
+  seq: number;
+  selectedDecisionId?: string | null;
+  branchDecisionId?: string | null;
+  branchVersusDecisionId?: string | null;
+  mutationHighlight?: AgentMutationHighlight;
+}
+
+/** Live workspace selection/compare state (user + agent). */
+export interface WorkspaceUIState {
+  selectedDecisionId: string | null;
+  branchDecisionId: string | null;
+  branchVersusDecisionId: string | null;
+  mutationHighlight: AgentMutationHighlight | null;
+}

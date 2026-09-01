@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ActivityLog } from '../components/ActivityLog';
 import { AgentActivity } from '../components/AgentActivity';
 import { BeforeAfterCompare } from '../components/BeforeAfterCompare';
@@ -20,12 +20,16 @@ import {
 } from '../components/WorkspacePanels';
 import { compareScenarioBranch, previewDecision } from '../simulation/actions';
 import type { SimulationState } from '../types';
-import type { WebMCPDebugEntry } from '../webmcp/types';
+import type { WebMCPDebugEntry, WorkspaceUIState } from '../webmcp/types';
 import { formatDay } from '../utils/helpers';
 
 interface SimulationWorkspaceProps {
   state: SimulationState;
   agentActivity: WebMCPDebugEntry[];
+  workspaceUI: WorkspaceUIState;
+  onSelectDecision: (decisionId: string | null) => void;
+  onSelectBranch: (decisionId: string | null) => void;
+  onClearBranch: () => void;
   onHome: () => void;
   onDecide: (decisionId: string) => void;
   onAdvanceDay: () => void;
@@ -35,13 +39,17 @@ interface SimulationWorkspaceProps {
 export function SimulationWorkspace({
   state,
   agentActivity,
+  workspaceUI,
+  onSelectDecision,
+  onSelectBranch,
+  onClearBranch,
   onHome,
   onDecide,
   onAdvanceDay,
   onSimulate,
 }: SimulationWorkspaceProps) {
-  const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(null);
-  const [branchDecisionId, setBranchDecisionId] = useState<string | null>(null);
+  const { selectedDecisionId, branchDecisionId, branchVersusDecisionId, mutationHighlight } =
+    workspaceUI;
   const canAdvance = state.day < state.deadlineDays;
 
   const preview = useMemo(() => {
@@ -51,25 +59,32 @@ export function SimulationWorkspace({
 
   const branchCompare = useMemo(() => {
     if (!branchDecisionId) return null;
-    return compareScenarioBranch(state, branchDecisionId);
-  }, [branchDecisionId, state]);
+    return compareScenarioBranch(state, branchDecisionId, branchVersusDecisionId);
+  }, [branchDecisionId, branchVersusDecisionId, state]);
 
   const handleSelect = (decisionId: string) => {
-    setSelectedDecisionId((prev) => (prev === decisionId ? null : decisionId));
+    onSelectDecision(selectedDecisionId === decisionId ? null : decisionId);
   };
 
   const handleCancel = () => {
-    setSelectedDecisionId(null);
+    onSelectDecision(null);
   };
 
   const handleApply = () => {
     if (!selectedDecisionId) return;
     onDecide(selectedDecisionId);
-    setSelectedDecisionId(null);
+    onSelectDecision(null);
+  };
+
+  const handleSelectBranch = (decisionId: string | null) => {
+    onSelectBranch(decisionId);
   };
 
   return (
-    <div className="page workspace">
+    <div
+      className={`page workspace${mutationHighlight ? ' workspace--agent-mutation' : ''}`}
+      data-agent-mutation={mutationHighlight ?? undefined}
+    >
       <header className="topbar topbar--workspace">
         <Logo compact onClick={onHome} />
         <div className="workspace__titleblock">
@@ -172,8 +187,8 @@ export function SimulationWorkspace({
           compare={branchCompare}
           branchDecisionId={branchDecisionId}
           decisions={state.availableDecisions}
-          onSelectBranch={setBranchDecisionId}
-          onClear={() => setBranchDecisionId(null)}
+          onSelectBranch={handleSelectBranch}
+          onClear={onClearBranch}
         />
 
         <Timeline day={state.day} deadlineDays={state.deadlineDays} tasks={state.tasks} />

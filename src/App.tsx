@@ -50,6 +50,10 @@ export default function App() {
         <SimulationWorkspace
           state={app.simulation}
           agentActivity={webmcp.debugLog}
+          workspaceUI={webmcp.workspaceUI}
+          onSelectDecision={webmcp.setSelectedDecisionId}
+          onSelectBranch={(id) => webmcp.setBranchCompare(id, null)}
+          onClearBranch={webmcp.clearBranchCompare}
           onHome={app.openDashboard}
           onDecide={app.makeDecision}
           onAdvanceDay={app.stepDay}
