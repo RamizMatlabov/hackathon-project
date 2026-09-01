@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DEMO_SCENARIOS } from '../data/mockScenarios';
+import { AGENT_DEMO_SCENARIO_NAME } from '../webmcp/agentDemoPlaybook';
 import {
   advanceDay,
   applyDecision,
@@ -71,6 +72,12 @@ export function useLifeSimApp() {
     [scenarios, startSimulation],
   );
 
+  const openAgentDemo = useCallback(() => {
+    const scenario = scenarios.find((s) => s.name === AGENT_DEMO_SCENARIO_NAME);
+    if (!scenario) return;
+    startSimulation(scenario);
+  }, [scenarios, startSimulation]);
+
   const makeDecision = useCallback((decisionId: string) => {
     setSimulation((prev) => {
       if (!prev) return prev;
@@ -106,6 +113,7 @@ export function useLifeSimApp() {
     updateDraft,
     startFromDraft,
     openScenario,
+    openAgentDemo,
     makeDecision,
     stepDay,
     recalculate,

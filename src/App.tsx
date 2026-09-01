@@ -70,6 +70,7 @@ export default function App() {
         scenarios={app.scenarios}
         onCreate={() => app.openBuilder(false)}
         onCreateFromTemplate={() => app.openBuilder(true)}
+        onOpenAgentDemo={app.openAgentDemo}
         onOpenScenario={app.openScenario}
       />
     </>

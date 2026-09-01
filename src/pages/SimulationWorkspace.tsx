@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { ActivityLog } from '../components/ActivityLog';
 import { AgentActivity } from '../components/AgentActivity';
+import { AgentDemoPlaybook } from '../components/AgentDemoPlaybook';
 import { BeforeAfterCompare } from '../components/BeforeAfterCompare';
 import { DecisionPanel } from '../components/DecisionPanel';
 import { ImpactAnalysis } from '../components/ImpactAnalysis';
@@ -20,6 +21,7 @@ import {
 } from '../components/WorkspacePanels';
 import { compareScenarioBranch, previewDecision } from '../simulation/actions';
 import type { SimulationState } from '../types';
+import { isAgentDemoScenario } from '../webmcp/agentDemoPlaybook';
 import type { WebMCPDebugEntry, WorkspaceUIState } from '../webmcp/types';
 import { formatDay } from '../utils/helpers';
 
@@ -51,6 +53,7 @@ export function SimulationWorkspace({
   const { selectedDecisionId, branchDecisionId, branchVersusDecisionId, mutationHighlight } =
     workspaceUI;
   const canAdvance = state.day < state.deadlineDays;
+  const showAgentPlaybook = isAgentDemoScenario(state.scenarioName);
 
   const preview = useMemo(() => {
     if (!selectedDecisionId) return null;
@@ -123,6 +126,8 @@ export function SimulationWorkspace({
             Observe → Decide → Preview → Apply → Next Day → Observe
           </p>
         </nav>
+
+        {showAgentPlaybook && <AgentDemoPlaybook agentActivity={agentActivity} />}
 
         <section className="workspace__command" aria-label="Scenario command bar">
           <div className="command-card command-card--goal">

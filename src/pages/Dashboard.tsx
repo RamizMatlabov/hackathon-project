@@ -1,10 +1,12 @@
 import type { Scenario } from '../types';
 import { Logo } from '../components/Logo';
+import { AGENT_DEMO_SCENARIO_NAME } from '../webmcp/agentDemoPlaybook';
 
 interface DashboardProps {
   scenarios: Scenario[];
   onCreate: () => void;
   onCreateFromTemplate: () => void;
+  onOpenAgentDemo: () => void;
   onOpenScenario: (id: string) => void;
 }
 
@@ -12,6 +14,7 @@ export function Dashboard({
   scenarios,
   onCreate,
   onCreateFromTemplate,
+  onOpenAgentDemo,
   onOpenScenario,
 }: DashboardProps) {
   return (
@@ -41,12 +44,16 @@ export function Dashboard({
               <button type="button" className="btn btn--primary btn--lg" onClick={onCreate}>
                 Create Scenario
               </button>
-              <button type="button" className="btn btn--secondary btn--lg" onClick={onCreateFromTemplate}>
+              <button type="button" className="btn btn--secondary btn--lg" onClick={onOpenAgentDemo}>
+                Start agent demo
+              </button>
+              <button type="button" className="btn btn--ghost btn--lg" onClick={onCreateFromTemplate}>
                 Start with sample launch
               </button>
             </div>
             <p className="hero-sim__hint">
-              Try the agent demo scenario: <strong>Launch a Student Innovation Project</strong> — designed for WebMCP exploration.
+              <strong>Start agent demo</strong> opens <em>Launch a Student Innovation Project</em> with
+              a 3-step WebMCP playbook for Chrome&apos;s Model Context Tool Inspector.
             </p>
           </div>
 
@@ -97,7 +104,7 @@ export function Dashboard({
                   <li key={scenario.id}>
                     <button
                       type="button"
-                      className={`scenario-card${scenario.name.includes('Student Innovation') ? ' scenario-card--featured' : ''}`}
+                      className={`scenario-card${scenario.name === AGENT_DEMO_SCENARIO_NAME ? ' scenario-card--featured' : ''}`}
                       onClick={() => onOpenScenario(scenario.id)}
                     >
                       <div>

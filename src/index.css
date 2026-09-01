@@ -527,6 +527,18 @@ img {
   margin-top: 0.35rem;
 }
 
+.scenario-card--featured {
+  border-color: rgba(63, 191, 168, 0.35);
+  background:
+    linear-gradient(120deg, rgba(63, 191, 168, 0.08), transparent 55%),
+    rgba(20, 26, 36, 0.9);
+}
+
+.scenario-card--featured .scenario-card__open::before {
+  content: 'WebMCP demo · ';
+  color: var(--text-dim);
+}
+
 .empty-note {
   margin-top: 1rem;
   color: var(--text-muted);
@@ -2176,6 +2188,175 @@ img {
   font-size: 0.7rem;
   color: var(--text-dim);
   font-family: var(--mono);
+}
+
+/* Agent demo playbook */
+.agent-playbook {
+  margin-bottom: 0.25rem;
+}
+
+.agent-playbook__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(105deg, rgba(63, 191, 168, 0.08), transparent 45%),
+    rgba(13, 17, 24, 0.75);
+  text-align: left;
+  transition: border-color var(--ease), background var(--ease);
+}
+
+.agent-playbook__toggle:hover {
+  border-color: rgba(63, 191, 168, 0.35);
+}
+
+.agent-playbook__toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.agent-playbook__progress {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--accent);
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(63, 191, 168, 0.25);
+}
+
+.agent-playbook__toggle-hint {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.agent-playbook__panel {
+  margin-top: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: rgba(13, 17, 24, 0.55);
+}
+
+.agent-playbook__intro {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.agent-playbook__beats {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.agent-playbook__beat {
+  padding: 0.7rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(20, 26, 36, 0.55);
+}
+
+.agent-playbook__beat.is-active {
+  border-color: rgba(63, 191, 168, 0.35);
+  background: rgba(63, 191, 168, 0.05);
+}
+
+.agent-playbook__beat.is-complete {
+  border-color: rgba(89, 184, 137, 0.3);
+  background: rgba(89, 184, 137, 0.05);
+}
+
+.agent-playbook__beat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.agent-playbook__beat-step {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.agent-playbook__beat-title {
+  font-size: 0.82rem;
+}
+
+.agent-playbook__beat-check {
+  margin-left: auto;
+  color: var(--good);
+  font-size: 0.85rem;
+}
+
+.agent-playbook__prompt-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.agent-playbook__prompt {
+  flex: 1;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border-left: 3px solid rgba(63, 191, 168, 0.45);
+  background: rgba(7, 9, 13, 0.45);
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.agent-playbook__copy {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.agent-playbook__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.agent-playbook__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(7, 9, 13, 0.35);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.agent-playbook__tool.is-complete {
+  color: var(--good);
+  border-color: rgba(89, 184, 137, 0.3);
+  background: var(--good-soft);
+}
+
+.agent-playbook__tool code {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.agent-playbook__tool-status {
+  font-size: 0.65rem;
 }
 
 .activity-log__actor {
