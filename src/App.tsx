@@ -8,7 +8,7 @@ import { WebMCPStatus } from './components/WebMCPStatus';
 
 export default function App() {
   const app = useLifeSimApp();
-  const webmcp = useWebMCP(app.simulation, app.setSimulation);
+  const webmcp = useWebMCP(app.simulation, app.setSimulation, app.simulationSessionKey);
 
   const chrome = (
     <>
@@ -50,10 +50,13 @@ export default function App() {
         <SimulationWorkspace
           state={app.simulation}
           agentActivity={webmcp.debugLog}
+          playbookSince={webmcp.playbookSince}
           workspaceUI={webmcp.workspaceUI}
           onSelectDecision={webmcp.setSelectedDecisionId}
           onSelectBranch={(id) => webmcp.setBranchCompare(id, null)}
           onClearBranch={webmcp.clearBranchCompare}
+          onConfirmAgentRecommendation={webmcp.confirmAgentRecommendation}
+          onDismissAgentRecommendation={webmcp.dismissAgentRecommendation}
           onHome={app.openDashboard}
           onDecide={app.makeDecision}
           onAdvanceDay={app.stepDay}

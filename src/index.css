@@ -2157,6 +2157,17 @@ img {
   color: var(--text-muted);
 }
 
+.agent-activity__flow {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(7, 9, 13, 0.35);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
 .agent-activity__list {
   display: grid;
   gap: 0.55rem;
@@ -2180,6 +2191,13 @@ img {
 .agent-activity__item strong {
   display: block;
   font-size: 0.82rem;
+}
+
+.agent-activity__detail {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 .agent-activity__meta {
@@ -2355,8 +2373,183 @@ img {
   font-size: 0.68rem;
 }
 
+.agent-playbook__tool-semantics {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+
+.agent-playbook__tool.is-complete .agent-playbook__tool-semantics {
+  color: inherit;
+  opacity: 0.75;
+}
+
 .agent-playbook__tool-status {
   font-size: 0.65rem;
+}
+
+/* Agent recommendation handoff */
+.agent-recommendation {
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(63, 191, 168, 0.35);
+  background:
+    linear-gradient(120deg, rgba(63, 191, 168, 0.12), transparent 55%),
+    rgba(13, 17, 24, 0.85);
+  box-shadow: var(--shadow);
+}
+
+.agent-recommendation--stale {
+  border-color: rgba(224, 164, 90, 0.4);
+  background:
+    linear-gradient(120deg, rgba(224, 164, 90, 0.1), transparent 55%),
+    rgba(13, 17, 24, 0.85);
+}
+
+.agent-recommendation--applied {
+  border-color: rgba(89, 184, 137, 0.4);
+  background:
+    linear-gradient(120deg, rgba(89, 184, 137, 0.1), transparent 55%),
+    rgba(13, 17, 24, 0.85);
+}
+
+.agent-recommendation__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.65rem;
+}
+
+.agent-recommendation__eyebrow {
+  margin: 0 0 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.agent-recommendation__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.agent-recommendation__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.agent-recommendation__badge {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.agent-recommendation__badge--agent {
+  color: var(--accent);
+  border-color: rgba(63, 191, 168, 0.35);
+  background: var(--accent-soft);
+}
+
+.agent-recommendation__badge--applied {
+  color: var(--good);
+  border-color: rgba(89, 184, 137, 0.35);
+  background: var(--good-soft);
+}
+
+.agent-recommendation__badge--stale {
+  color: var(--warn);
+  border-color: rgba(224, 164, 90, 0.35);
+  background: var(--warn-soft);
+}
+
+.agent-recommendation__safety {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.agent-recommendation__next {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.agent-recommendation__stale-message,
+.agent-recommendation__applied-message {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.agent-recommendation__dismiss {
+  margin-top: 0.55rem;
+  font-size: 0.75rem;
+}
+
+.agent-recommendation__flow {
+  margin: 0.7rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.agent-recommendation__metrics {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.agent-recommendation__metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(7, 9, 13, 0.35);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+}
+
+.agent-recommendation__metric.is-better {
+  border-color: rgba(89, 184, 137, 0.25);
+}
+
+.agent-recommendation__metric.is-worse {
+  border-color: rgba(226, 107, 107, 0.25);
+}
+
+.agent-recommendation__metric-label {
+  color: var(--text-muted);
+}
+
+.agent-recommendation__metric-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.agent-recommendation__metric-delta {
+  color: var(--text-dim);
+}
+
+.agent-recommendation__no-metrics {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
 .activity-log__actor {

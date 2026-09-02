@@ -1,4 +1,4 @@
-import type { SimulationState } from '../types';
+import type { ImpactLevel, MetricChange, SimulationState } from '../types';
 
 export type WebMCPToolCategory = 'observe' | 'analyze' | 'act';
 
@@ -105,6 +105,19 @@ export interface WebMCPDebugEntry {
 
 export type AgentMutationHighlight = 'apply_decision' | 'advance_day';
 
+export type AgentRecommendationStatus = 'pending' | 'applied' | 'stale';
+
+/** Agent preview awaiting human confirmation — sourced from preview_decision tool result. */
+export interface AgentRecommendation {
+  previewId: string;
+  simulationVersion: number;
+  decisionId: string;
+  decisionTitle: string;
+  changes: MetricChange[];
+  estimatedImpact: ImpactLevel;
+  status: AgentRecommendationStatus;
+}
+
 /** Workspace UI intent emitted after agent tool calls that should mirror in the main UI. */
 export interface AgentUISyncIntent {
   seq: number;
@@ -120,4 +133,5 @@ export interface WorkspaceUIState {
   branchDecisionId: string | null;
   branchVersusDecisionId: string | null;
   mutationHighlight: AgentMutationHighlight | null;
+  agentRecommendation: AgentRecommendation | null;
 }

@@ -4,20 +4,22 @@ import {
   countCompletedBeats,
   derivePlaybookCompletion,
   isBeatComplete,
+  PLAYBOOK_TOOL_SEMANTICS,
 } from '../webmcp/agentDemoPlaybook';
 import type { WebMCPDebugEntry } from '../webmcp/types';
 
 interface AgentDemoPlaybookProps {
   agentActivity: WebMCPDebugEntry[];
+  playbookSince: number;
 }
 
-export function AgentDemoPlaybook({ agentActivity }: AgentDemoPlaybookProps) {
+export function AgentDemoPlaybook({ agentActivity, playbookSince }: AgentDemoPlaybookProps) {
   const [open, setOpen] = useState(true);
   const [copiedBeatId, setCopiedBeatId] = useState<string | null>(null);
 
   const completedTools = useMemo(
-    () => derivePlaybookCompletion(agentActivity),
-    [agentActivity],
+    () => derivePlaybookCompletion(agentActivity, playbookSince),
+    [agentActivity, playbookSince],
   );
   const completedBeatCount = countCompletedBeats(completedTools);
   const allComplete = completedBeatCount === AGENT_DEMO_PLAYBOOK_BEATS.length;
@@ -95,6 +97,7 @@ export function AgentDemoPlaybook({ agentActivity }: AgentDemoPlaybookProps) {
                   <ul className="agent-playbook__tools" aria-label={`Expected tools for beat ${beat.step}`}>
                     {beat.tools.map((tool) => {
                       const toolComplete = completedTools.has(tool);
+                      const semantics = PLAYBOOK_TOOL_SEMANTICS[tool];
                       return (
                         <li
                           key={tool}
@@ -104,6 +107,9 @@ export function AgentDemoPlaybook({ agentActivity }: AgentDemoPlaybookProps) {
                             {toolComplete ? '✓' : '○'}
                           </span>
                           <code>{tool}</code>
+                          {semantics && (
+                            <span className="agent-playbook__tool-semantics">{semantics}</span>
+                          )}
                         </li>
                       );
                     })}

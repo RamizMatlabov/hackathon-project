@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ActivityLog } from '../components/ActivityLog';
 import { AgentActivity } from '../components/AgentActivity';
 import { AgentDemoPlaybook } from '../components/AgentDemoPlaybook';
+import { AgentRecommendationPanel } from '../components/AgentRecommendation';
 import { BeforeAfterCompare } from '../components/BeforeAfterCompare';
 import { DecisionPanel } from '../components/DecisionPanel';
 import { ImpactAnalysis } from '../components/ImpactAnalysis';
@@ -28,10 +29,13 @@ import { formatDay } from '../utils/helpers';
 interface SimulationWorkspaceProps {
   state: SimulationState;
   agentActivity: WebMCPDebugEntry[];
+  playbookSince: number;
   workspaceUI: WorkspaceUIState;
   onSelectDecision: (decisionId: string | null) => void;
   onSelectBranch: (decisionId: string | null) => void;
   onClearBranch: () => void;
+  onConfirmAgentRecommendation: (decisionId: string) => void;
+  onDismissAgentRecommendation: () => void;
   onHome: () => void;
   onDecide: (decisionId: string) => void;
   onAdvanceDay: () => void;
@@ -41,16 +45,19 @@ interface SimulationWorkspaceProps {
 export function SimulationWorkspace({
   state,
   agentActivity,
+  playbookSince,
   workspaceUI,
   onSelectDecision,
   onSelectBranch,
   onClearBranch,
+  onConfirmAgentRecommendation,
+  onDismissAgentRecommendation,
   onHome,
   onDecide,
   onAdvanceDay,
   onSimulate,
 }: SimulationWorkspaceProps) {
-  const { selectedDecisionId, branchDecisionId, branchVersusDecisionId, mutationHighlight } =
+  const { selectedDecisionId, branchDecisionId, branchVersusDecisionId, mutationHighlight, agentRecommendation } =
     workspaceUI;
   const canAdvance = state.day < state.deadlineDays;
   const showAgentPlaybook = isAgentDemoScenario(state.scenarioName);
@@ -75,6 +82,7 @@ export function SimulationWorkspace({
 
   const handleApply = () => {
     if (!selectedDecisionId) return;
+    onConfirmAgentRecommendation(selectedDecisionId);
     onDecide(selectedDecisionId);
     onSelectDecision(null);
   };
@@ -127,7 +135,12 @@ export function SimulationWorkspace({
           </p>
         </nav>
 
-        {showAgentPlaybook && <AgentDemoPlaybook agentActivity={agentActivity} />}
+        {showAgentPlaybook && (
+          <AgentDemoPlaybook
+            agentActivity={agentActivity}
+            playbookSince={playbookSince}
+          />
+        )}
 
         <section className="workspace__command" aria-label="Scenario command bar">
           <div className="command-card command-card--goal">
@@ -171,6 +184,13 @@ export function SimulationWorkspace({
         </section>
 
         <MetricsPanel metrics={state.metrics} />
+
+        {agentRecommendation && (
+          <AgentRecommendationPanel
+            recommendation={agentRecommendation}
+            onDismiss={agentRecommendation.status === 'stale' ? onDismissAgentRecommendation : undefined}
+          />
+        )}
 
         <section className="workspace__sim-core" aria-label="Decision simulation core">
           <DecisionPanel

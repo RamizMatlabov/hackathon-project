@@ -21,6 +21,7 @@ export function useLifeSimApp() {
   const [scenarios, setScenarios] = useState<Scenario[]>(() => DEMO_SCENARIOS);
   const [draft, setDraft] = useState<ScenarioDraft>(() => createEmptyDraft());
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
+  const [simulationSessionKey, setSimulationSessionKey] = useState(0);
 
   const recentScenarios = useMemo(
     () => [...scenarios].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt),
@@ -50,6 +51,7 @@ export function useLifeSimApp() {
     (scenario: Scenario) => {
       const next = startSimAction(scenario);
       setSimulation(next);
+      setSimulationSessionKey((key) => key + 1);
       touchScenario(scenario.id);
       setView('simulation');
     },
@@ -106,6 +108,7 @@ export function useLifeSimApp() {
     scenarios: recentScenarios,
     draft,
     simulation,
+    simulationSessionKey,
     setSimulation,
     draftValid: isDraftValid(draft),
     openDashboard,

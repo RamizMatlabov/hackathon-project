@@ -31,7 +31,7 @@ export const AGENT_DEMO_PLAYBOOK_BEATS: PlaybookBeat[] = [
     step: 2,
     title: 'Compare',
     prompt:
-      'Compare reducing scope vs adding a team member. Which is better for success?',
+      'Compare reducing scope vs adding a team member. What are the trade-offs, and which would you recommend?',
     tools: ['compare_scenario_branch'],
   },
   {
@@ -47,6 +47,13 @@ const PLAYBOOK_TOOLS = new Set<PlaybookToolName>(
   AGENT_DEMO_PLAYBOOK_BEATS.flatMap((beat) => beat.tools),
 );
 
+/** Visual semantics for Beat 3 tools — does not affect completion logic. */
+export const PLAYBOOK_TOOL_SEMANTICS: Partial<Record<PlaybookToolName, string>> = {
+  preview_decision: 'READ-ONLY',
+  apply_decision: 'MUTATION / COMMIT',
+  advance_day: 'MUTATION / TIME STEP',
+};
+
 export function isAgentDemoScenario(scenarioName: string): boolean {
   return scenarioName === AGENT_DEMO_SCENARIO_NAME;
 }
@@ -56,10 +63,14 @@ function isPlaybookTool(tool: string): tool is PlaybookToolName {
 }
 
 /** Derive completed playbook tools from real WebMCP debug entries (successful calls only). */
-export function derivePlaybookCompletion(entries: WebMCPDebugEntry[]): Set<PlaybookToolName> {
+export function derivePlaybookCompletion(
+  entries: WebMCPDebugEntry[],
+  since = 0,
+): Set<PlaybookToolName> {
   const completed = new Set<PlaybookToolName>();
 
   for (const entry of entries) {
+    if (entry.timestamp < since) continue;
     if (!entry.result.success || !isPlaybookTool(entry.tool)) continue;
     completed.add(entry.tool);
   }

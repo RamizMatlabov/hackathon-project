@@ -4,68 +4,89 @@ interface AgentActivityProps {
   entries: WebMCPDebugEntry[];
 }
 
-const OBSERVE_TOOLS = new Set(['get_simulation_state', 'get_available_decisions', 'simulate']);
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
 
-function formatEntry(entry: WebMCPDebugEntry): string {
+function decisionTitleFromResult(entry: WebMCPDebugEntry): string | null {
+  if (!entry.result.success) return null;
+  const data = asObject(entry.result.data);
+  if (!data) return null;
+
+  if (typeof data.decisionTitle === 'string' && data.decisionTitle.length > 0) {
+    return data.decisionTitle;
+  }
+
+  if (typeof data.actionDetail === 'string') {
+    const match = /^Applied:\s*(.+)$/i.exec(data.actionDetail);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
+}
+
+function formatPrimaryLabel(entry: WebMCPDebugEntry): string {
   const { tool, result } = entry;
 
   if (!result.success) {
-    return `Error in ${tool}: ${result.error}`;
+    return `Agent tool failed: ${tool}`;
   }
 
-  if (OBSERVE_TOOLS.has(tool)) {
-    return 'Agent is analyzing…';
+  switch (tool) {
+    case 'get_simulation_state':
+      return 'Agent analyzed the simulation';
+    case 'get_available_decisions':
+      return 'Agent listed available decisions';
+    case 'simulate':
+      return 'Agent recalculated projections';
+    case 'compare_scenario_branch':
+      return 'Agent compared two strategies';
+    case 'preview_decision': {
+      const title = decisionTitleFromResult(entry) ?? 'a decision';
+      return `Agent previewed ${title}`;
+    }
+    case 'apply_decision': {
+      const title = decisionTitleFromResult(entry) ?? 'a decision';
+      return `Agent applied ${title}`;
+    }
+    case 'advance_day':
+      return 'Agent advanced the simulation';
+    case 'change_deadline':
+      return 'Agent changed the deadline';
+    case 'add_task':
+      return 'Agent added a task';
+    case 'remove_task':
+      return 'Agent removed a task';
+    case 'add_resource':
+      return 'Agent added a resource';
+    case 'add_team_member':
+      return 'Agent added a team member';
+    default:
+      return `Agent called ${tool}`;
+  }
+}
+
+function formatDetail(entry: WebMCPDebugEntry): string | null {
+  if (!entry.result.success) {
+    return entry.result.error;
   }
 
-  if (tool === 'preview_decision') {
-    const title =
-      result.data &&
-      typeof result.data === 'object' &&
-      'decisionTitle' in result.data
-        ? String((result.data as { decisionTitle: string }).decisionTitle)
-        : 'decision';
-    return `Previewed "${title}"`;
+  if (entry.tool === 'preview_decision') {
+    return 'Read-only preview — awaiting human confirmation before apply.';
   }
 
-  if (tool === 'compare_scenario_branch') {
-    return 'Compared scenario branches';
+  if (entry.tool === 'apply_decision') {
+    return 'Mutation committed to the live simulation.';
   }
 
-  if (tool === 'apply_decision') {
-    const detail =
-      result.data &&
-      typeof result.data === 'object' &&
-      'actionDetail' in result.data
-        ? String((result.data as { actionDetail: string }).actionDetail)
-        : 'Applied decision';
-    return detail;
+  if (entry.tool === 'compare_scenario_branch') {
+    return 'Branch comparison — read-only, no state change.';
   }
 
-  if (tool === 'advance_day') {
-    return 'Advanced one day';
-  }
-
-  if (tool === 'change_deadline') {
-    return 'Changed deadline';
-  }
-
-  if (tool === 'add_task') {
-    return 'Added a task';
-  }
-
-  if (tool === 'remove_task') {
-    return 'Removed a task';
-  }
-
-  if (tool === 'add_resource') {
-    return 'Added a resource';
-  }
-
-  if (tool === 'add_team_member') {
-    return 'Added a team member';
-  }
-
-  return `Called ${tool}`;
+  return null;
 }
 
 export function AgentActivity({ entries }: AgentActivityProps) {
@@ -78,6 +99,9 @@ export function AgentActivity({ entries }: AgentActivityProps) {
           <h2>Agent activity</h2>
           <p>Real WebMCP tool calls appear here when an external agent interacts with LifeSim.</p>
         </header>
+        <p className="agent-activity__flow">
+          Agent analyzes → previews → human confirms → simulation changes
+        </p>
         <p className="agent-activity__empty">No agent activity yet.</p>
       </section>
     );
@@ -89,11 +113,14 @@ export function AgentActivity({ entries }: AgentActivityProps) {
         <h2>Agent activity</h2>
         <p>Live feed from WebMCP tool calls — not simulated.</p>
       </header>
+      <p className="agent-activity__flow">
+        Agent analyzes → previews → human confirms → simulation changes
+      </p>
       <ol className="agent-activity__list">
         {visible.map((entry) => {
-          const label = formatEntry(entry);
+          const label = formatPrimaryLabel(entry);
+          const detail = formatDetail(entry);
           const isError = !entry.result.success;
-          const isAnalyzing = OBSERVE_TOOLS.has(entry.tool) && entry.result.success;
 
           return (
             <li
@@ -104,9 +131,8 @@ export function AgentActivity({ entries }: AgentActivityProps) {
                 {isError ? '⚠️' : '🤖'}
               </span>
               <div>
-                <strong>
-                  {isAnalyzing ? 'Agent is analyzing…' : label}
-                </strong>
+                <strong>{label}</strong>
+                {detail && <span className="agent-activity__detail">{detail}</span>}
                 <span className="agent-activity__meta">
                   {entry.tool}
                   {' · '}

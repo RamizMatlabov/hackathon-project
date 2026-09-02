@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { SimulationState } from '../types';
+import { deriveAgentRecommendationUpdate } from '../webmcp/agentRecommendation';
 import { deriveAgentUISyncIntent } from '../webmcp/agentUISync';
 import { createInitialRegistrationInfo, isWebMCPSupported } from '../webmcp/capabilities';
 import { registerLifeSimTools } from '../webmcp/register';
@@ -20,6 +21,7 @@ const INITIAL_WORKSPACE_UI: WorkspaceUIState = {
   branchDecisionId: null,
   branchVersusDecisionId: null,
   mutationHighlight: null,
+  agentRecommendation: null,
 };
 
 function applyAgentIntent(
@@ -40,28 +42,72 @@ function applyAgentIntent(
         ? (intent.branchVersusDecisionId ?? null)
         : prev.branchVersusDecisionId,
     mutationHighlight: intent.mutationHighlight ?? null,
+    agentRecommendation: prev.agentRecommendation,
   };
 }
 
 export function useWebMCP(
   simulation: SimulationState | null,
   setSimulation: Dispatch<SetStateAction<SimulationState | null>>,
+  simulationSessionKey: number,
 ) {
   const simulationRef = useRef(simulation);
   const [registration, setRegistration] = useState<WebMCPRegistrationInfo>(
     createInitialRegistrationInfo,
   );
   const [debugLog, setDebugLog] = useState<WebMCPDebugEntry[]>([]);
+  const [playbookSince, setPlaybookSince] = useState(() => Date.now());
   const [workspaceUI, setWorkspaceUI] = useState<WorkspaceUIState>(INITIAL_WORKSPACE_UI);
   const [selfTest, setSelfTest] = useState<WebMCPSelfTestResult | null>(null);
   const [selfTestRunning, setSelfTestRunning] = useState(false);
   const highlightTimerRef = useRef<number | null>(null);
+  const appliedDismissTimerRef = useRef<number | null>(null);
 
   simulationRef.current = simulation;
 
   useEffect(() => {
+    if (!simulation) return;
+    setPlaybookSince(Date.now());
     setWorkspaceUI(INITIAL_WORKSPACE_UI);
-  }, [simulation?.scenarioId]);
+  }, [simulationSessionKey]);
+
+  useEffect(() => {
+    setWorkspaceUI((prev) => {
+      const rec = prev.agentRecommendation;
+      if (!rec || rec.status !== 'pending') return prev;
+      if (simulation && simulation.simulationVersion !== rec.simulationVersion) {
+        return {
+          ...prev,
+          agentRecommendation: { ...rec, status: 'stale' },
+        };
+      }
+      return prev;
+    });
+  }, [simulation?.simulationVersion]);
+
+  useEffect(() => {
+    if (workspaceUI.agentRecommendation?.status !== 'applied') return undefined;
+
+    if (appliedDismissTimerRef.current != null) {
+      window.clearTimeout(appliedDismissTimerRef.current);
+    }
+
+    appliedDismissTimerRef.current = window.setTimeout(() => {
+      setWorkspaceUI((prev) =>
+        prev.agentRecommendation?.status === 'applied'
+          ? { ...prev, agentRecommendation: null }
+          : prev,
+      );
+      appliedDismissTimerRef.current = null;
+    }, 4000);
+
+    return () => {
+      if (appliedDismissTimerRef.current != null) {
+        window.clearTimeout(appliedDismissTimerRef.current);
+        appliedDismissTimerRef.current = null;
+      }
+    };
+  }, [workspaceUI.agentRecommendation?.status, workspaceUI.agentRecommendation?.previewId]);
 
   const bridgeRef = useRef<SimulationBridge>({
     getState: () => simulationRef.current,
@@ -75,17 +121,14 @@ export function useWebMCP(
     setSimulation((prev) => updater(prev));
   };
 
-  const applyAgentUISync = useCallback((intent: Omit<AgentUISyncIntent, 'seq'>) => {
-    setWorkspaceUI((prev) => applyAgentIntent(prev, intent));
-    if (intent.mutationHighlight) {
-      if (highlightTimerRef.current != null) {
-        window.clearTimeout(highlightTimerRef.current);
-      }
-      highlightTimerRef.current = window.setTimeout(() => {
-        setWorkspaceUI((prev) => ({ ...prev, mutationHighlight: null }));
-        highlightTimerRef.current = null;
-      }, 1800);
+  const startMutationHighlightTimer = useCallback(() => {
+    if (highlightTimerRef.current != null) {
+      window.clearTimeout(highlightTimerRef.current);
     }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setWorkspaceUI((prev) => ({ ...prev, mutationHighlight: null }));
+      highlightTimerRef.current = null;
+    }, 1800);
   }, []);
 
   useEffect(() => {
@@ -98,7 +141,15 @@ export function useWebMCP(
       onDebug: (entry) => {
         setDebugLog((prev) => [entry, ...prev].slice(0, MAX_DEBUG_ENTRIES));
         const intent = deriveAgentUISyncIntent(entry);
-        if (intent) applyAgentUISync(intent);
+        setWorkspaceUI((prev) => {
+          const recUpdate = deriveAgentRecommendationUpdate(entry, prev.agentRecommendation);
+          const next = intent ? applyAgentIntent(prev, intent) : prev;
+          if (recUpdate === undefined) return next;
+          return { ...next, agentRecommendation: recUpdate };
+        });
+        if (intent?.mutationHighlight) {
+          startMutationHighlightTimer();
+        }
       },
     }).then((cleanup) => {
       unregister = cleanup;
@@ -110,8 +161,11 @@ export function useWebMCP(
       if (highlightTimerRef.current != null) {
         window.clearTimeout(highlightTimerRef.current);
       }
+      if (appliedDismissTimerRef.current != null) {
+        window.clearTimeout(appliedDismissTimerRef.current);
+      }
     };
-  }, [applyAgentUISync, setSimulation]);
+  }, [setSimulation, startMutationHighlightTimer]);
 
   const runSelfTest = useCallback(async () => {
     setSelfTestRunning(true);
@@ -151,14 +205,29 @@ export function useWebMCP(
     setWorkspaceUI(INITIAL_WORKSPACE_UI);
   }, []);
 
+  const confirmAgentRecommendation = useCallback((decisionId: string) => {
+    setWorkspaceUI((prev) => {
+      const rec = prev.agentRecommendation;
+      if (!rec || rec.decisionId !== decisionId || rec.status !== 'pending') return prev;
+      return { ...prev, agentRecommendation: { ...rec, status: 'applied' } };
+    });
+  }, []);
+
+  const dismissAgentRecommendation = useCallback(() => {
+    setWorkspaceUI((prev) => ({ ...prev, agentRecommendation: null }));
+  }, []);
+
   return {
     registration,
     debugLog,
+    playbookSince,
     workspaceUI,
     setSelectedDecisionId,
     setBranchCompare,
     clearBranchCompare,
     resetWorkspaceUI,
+    confirmAgentRecommendation,
+    dismissAgentRecommendation,
     selfTest,
     selfTestRunning,
     runSelfTest,
