@@ -36,12 +36,10 @@ export function invalidateAllPreviews(): void {
 }
 
 export function validatePreviewForApply(
-  previewId: string | undefined,
+  previewId: string,
   state: SimulationState,
   decisionId: string,
 ): WebMCPToolFailure | null {
-  if (!previewId) return null;
-
   const record = previews.get(previewId);
   if (!record) {
     return toolErr(

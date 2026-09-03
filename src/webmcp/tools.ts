@@ -314,7 +314,7 @@ export function createLifeSimToolDefinitions(
       category: 'act',
       readOnly: false,
       description:
-        '[MUTATE] Commits a decision to the live simulation. Mutates tasks, metrics, events, and increments simulationVersion. Only call after the user confirms a preview_decision result. Optional preview_id validates the preview matches current simulationVersion — stale previews are rejected. Input: decision_id (required), preview_id (recommended).',
+        '[MUTATE] Commits a decision to the live simulation. Mutates tasks, metrics, events, and increments simulationVersion. Only call after the user confirms a preview_decision result. Requires preview_id from preview_decision — missing, invalid, or stale previews are rejected without mutating state. Input: decision_id (required), preview_id (required).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -325,10 +325,10 @@ export function createLifeSimToolDefinitions(
           preview_id: {
             type: 'string',
             description:
-              'previewId returned by preview_decision. Validates preview is still valid for current simulationVersion.',
+              'previewId returned by preview_decision. Must match decision_id and current simulationVersion.',
           },
         },
-        required: ['decision_id'],
+        required: ['decision_id', 'preview_id'],
         additionalProperties: false,
       } as const satisfies JsonSchemaForInference,
       handler: (input) => {
@@ -338,10 +338,7 @@ export function createLifeSimToolDefinitions(
         const decisionId = requireString(input.decision_id, 'decision_id');
         if (isToolFailure(decisionId)) return decisionId;
 
-        const previewId =
-          input.preview_id == null || input.preview_id === ''
-            ? undefined
-            : requireString(input.preview_id, 'preview_id');
+        const previewId = requireString(input.preview_id, 'preview_id');
         if (isToolFailure(previewId)) return previewId;
 
         const previewError = validatePreviewForApply(previewId, state, decisionId);

@@ -37,6 +37,7 @@ assert('Test 2 has decisions', decisions.length > 0);
 
 const reduceScope = decisions.find((d: { kind: string }) => d.kind === 'reduce_scope');
 assert('Test 2 reduce_scope available', Boolean(reduceScope?.available));
+const addMember = decisions.find((d: { kind: string }) => d.kind === 'add_team_member');
 
 // Test 3
 const versionBeforePreview = state!.simulationVersion;
@@ -46,8 +47,39 @@ assert('Test 3 no mutation', state!.simulationVersion === versionBeforePreview);
 const previewId = t3.success ? t3.data.previewId : null;
 assert('Test 3 previewId returned', Boolean(previewId));
 
+// apply_decision safety contract (before any successful apply)
+const safetyVersion = state!.simulationVersion;
+const noPreviewApply = await tools.apply_decision({ decision_id: reduceScope!.id });
+assert(
+  'Safety apply without preview_id rejected',
+  noPreviewApply.success === false && noPreviewApply.code === 'INVALID_INPUT',
+  noPreviewApply.success ? 'unexpected success' : noPreviewApply.code,
+);
+assert('Safety no mutation without preview_id', state!.simulationVersion === safetyVersion);
+
+const invalidPreviewApply = await tools.apply_decision({
+  decision_id: reduceScope!.id,
+  preview_id: 'prev_nonexistent_0',
+});
+assert(
+  'Safety invalid preview_id rejected',
+  invalidPreviewApply.success === false && invalidPreviewApply.code === 'PREVIEW_NOT_FOUND',
+  invalidPreviewApply.success ? 'unexpected success' : invalidPreviewApply.code,
+);
+assert('Safety no mutation for invalid preview_id', state!.simulationVersion === safetyVersion);
+
+const wrongDecisionApply = await tools.apply_decision({
+  decision_id: addMember!.id,
+  preview_id: previewId!,
+});
+assert(
+  'Safety preview for wrong decision rejected',
+  wrongDecisionApply.success === false && wrongDecisionApply.code === 'PREVIEW_MISMATCH',
+  wrongDecisionApply.success ? 'unexpected success' : wrongDecisionApply.code,
+);
+assert('Safety no mutation for preview mismatch', state!.simulationVersion === safetyVersion);
+
 // Test 4
-const addMember = decisions.find((d: { kind: string }) => d.kind === 'add_team_member');
 const t4 = await tools.compare_scenario_branch({
   decision_id: reduceScope!.id,
   versus_decision_id: addMember!.id,
